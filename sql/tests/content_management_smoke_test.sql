@@ -1,0 +1,58 @@
+SET SERVEROUTPUT ON
+DECLARE
+    v_admin_id NUMBER;
+    v_author_id NUMBER;
+    v_topic_id NUMBER;
+    v_category_id NUMBER;
+    v_quiz_id NUMBER;
+    v_demo_quiz_id NUMBER;
+    v_question_id NUMBER;
+    v_attempt_id NUMBER;
+    v_name VARCHAR2(200);
+    v_role VARCHAR2(20);
+    v_count NUMBER;
+BEGIN
+    SAVEPOINT before_content_management_test;
+
+    pr_login('admin', 'Admin123!', v_admin_id, v_name, v_role);
+    pkg_admin.create_author(v_admin_id, 'smoke_editor', 'Editor123!', 'Smoke Editor', v_author_id);
+    pkg_admin.create_topic(v_author_id, 'Smoke content topic', 'Temporary author material', v_topic_id);
+    pkg_admin.create_category(v_author_id, v_topic_id, 'Author category', v_category_id);
+
+    SELECT COUNT(*) INTO v_count
+      FROM categories
+     WHERE category_id = v_category_id
+       AND topic_id = v_topic_id;
+    IF v_count <> 1 THEN
+        RAISE_APPLICATION_ERROR(-20993, 'AUTHOR could not create a category.');
+    END IF;
+
+    pkg_admin.create_quiz(v_author_id, v_topic_id, 'Temporary draft', NULL, 10, 1, 'PUBLIC', v_quiz_id);
+    pkg_admin.add_question(
+        v_author_id, v_quiz_id, v_category_id, 'TEXT', 'EASY',
+        'Temporary question', 'answer', NULL, 1, v_question_id
+    );
+    pkg_admin.delete_question(v_admin_id, v_question_id);
+    pkg_admin.delete_category(v_admin_id, v_category_id);
+    pkg_admin.delete_quiz(v_admin_id, v_quiz_id);
+    pkg_admin.delete_topic(v_admin_id, v_topic_id);
+
+    SELECT quiz_id INTO v_demo_quiz_id FROM quizzes WHERE title = 'Oracle: основы серверной логики';
+    pkg_testing.start_attempt(v_author_id, v_demo_quiz_id, v_attempt_id);
+    pkg_admin.reset_user_quiz_attempts(v_admin_id, v_author_id, v_demo_quiz_id);
+    SELECT COUNT(*) INTO v_count FROM attempts WHERE user_id = v_author_id AND quiz_id = v_demo_quiz_id;
+    IF v_count <> 0 THEN
+        RAISE_APPLICATION_ERROR(-20992, 'ADMIN could not reset attempts for selected quiz.');
+    END IF;
+
+    pkg_testing.start_attempt(v_author_id, v_demo_quiz_id, v_attempt_id);
+    pkg_admin.reset_user_progress(v_admin_id, v_author_id);
+    SELECT COUNT(*) INTO v_count FROM attempts WHERE user_id = v_author_id;
+    IF v_count <> 0 THEN
+        RAISE_APPLICATION_ERROR(-20991, 'ADMIN could not reset all user attempts.');
+    END IF;
+
+    DBMS_OUTPUT.PUT_LINE('Content management smoke test successful. AUTHOR category creation, ADMIN deletion and progress reset verified.');
+    ROLLBACK TO before_content_management_test;
+END;
+/

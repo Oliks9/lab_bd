@@ -1,0 +1,1104 @@
+import tkinter as tk
+from tkinter import messagebox, ttk
+
+from .config import ConnectionSettings, load_settings, save_settings
+from .database import OracleGateway, SessionUser
+from .theme import COLORS, configure_theme
+
+ROLE_NAMES = {
+    "USER": "Участник",
+    "AUTHOR": "Автор",
+    "ADMIN": "Администратор",
+}
+STATUS_NAMES = {
+    "DRAFT": "Черновик",
+    "PUBLISHED": "Опубликован",
+    "ARCHIVED": "В архиве",
+}
+ACCESS_NAMES = {
+    "PUBLIC": "Публичный",
+    "RESTRICTED": "По приглашению",
+}
+
+
+class QuizApplication(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Oracle Quiz Platform")
+        self.geometry("1240x820")
+        self.minsize(1060, 700)
+        configure_theme(self)
+
+        self.gateway = OracleGateway()
+        self.user: SessionUser | None = None
+        self.page = ttk.Frame(self, style="App.TFrame", padding=24)
+        self.page.pack(fill="both", expand=True)
+        self.active_attempt_id = None
+        self.active_questions = []
+        self.active_index = 0
+        self.active_header = None
+        self.remaining_seconds = None
+        self.timer_job = None
+        self.show_connection()
+
+    def clear_page(self):
+        self.cancel_timer()
+        for widget in self.page.winfo_children():
+            widget.destroy()
+
+    def panel(self, parent, padding=20):
+        outer = tk.Frame(parent, bg=COLORS["panel"], highlightthickness=1, highlightbackground=COLORS["line"])
+        inner = ttk.Frame(outer, style="Panel.TFrame", padding=padding)
+        inner.pack(fill="both", expand=True)
+        return outer, inner
+
+    def heading(self, title, subtitle="", with_navigation=True):
+        header = ttk.Frame(self.page, style="App.TFrame")
+        header.pack(fill="x", pady=(0, 20))
+        left = ttk.Frame(header, style="App.TFrame")
+        left.pack(side="left", fill="x", expand=True)
+        ttk.Label(left, text=title, style="PageTitle.TLabel").pack(anchor="w")
+        if subtitle:
+            ttk.Label(left, text=subtitle, style="Subtitle.TLabel").pack(anchor="w", pady=(5, 0))
+        if with_navigation and self.user:
+            nav = ttk.Frame(header, style="App.TFrame")
+            nav.pack(side="right", anchor="n")
+            ttk.Button(nav, text="Каталог", style="Nav.TButton", command=self.show_catalog).pack(side="left", padx=3)
+            ttk.Button(nav, text="Мои результаты", style="Nav.TButton", command=self.show_history).pack(side="left", padx=3)
+            if self.user.role_code in ("ADMIN", "AUTHOR"):
+                ttk.Button(nav, text="Студия тестов", style="Nav.TButton", command=self.show_admin).pack(side="left", padx=3)
+            ttk.Button(nav, text="Выйти", style="Quiet.TButton", command=self.logout).pack(side="left", padx=(12, 0))
+
+    def report_error(self, exc):
+        message = str(exc)
+        if "ORA-" in message and ":" in message:
+            message = message.split(":", 1)[1].strip()
+        messagebox.showerror("Операция не выполнена", message)
+
+    def show_connection(self):
+        self.clear_page()
+        self.heading(
+            "Oracle Quiz",
+            "Платформа тестирования с серверной логикой Oracle.",
+            with_navigation=False,
+        )
+        settings = load_settings()
+        outer, form = self.panel(self.page, padding=28)
+        outer.pack(fill="x", padx=(140, 140), pady=(28, 0))
+        ttk.Label(form, text="Подключение к базе", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 18))
+        ttk.Label(form, text="DSN (host:port/service)", style="Card.TLabel").grid(row=1, column=0, sticky="w", pady=6)
+        dsn = ttk.Entry(form, width=48)
+        dsn.insert(0, settings.dsn)
+        dsn.grid(row=1, column=1, sticky="ew", padx=(18, 0), pady=6)
+        ttk.Label(form, text="Пользователь схемы", style="Card.TLabel").grid(row=2, column=0, sticky="w", pady=6)
+        schema_user = ttk.Entry(form, width=48)
+        schema_user.insert(0, settings.schema_user)
+        schema_user.grid(row=2, column=1, sticky="ew", padx=(18, 0), pady=6)
+        ttk.Label(form, text="Пароль схемы", style="Card.TLabel").grid(row=3, column=0, sticky="w", pady=6)
+        schema_password = ttk.Entry(form, show="*", width=48)
+        schema_password.grid(row=3, column=1, sticky="ew", padx=(18, 0), pady=6)
+        form.columnconfigure(1, weight=1)
+
+        note = (
+            "Эти данные используются для соединения с Oracle. "
+            "В Docker-конфигурации оставьте значения по умолчанию и укажите пароль QuizSchema2026."
+        )
+        ttk.Label(form, text=note, style="Muted.TLabel", wraplength=690, justify="left").grid(
+            row=4, column=0, columnspan=2, sticky="w", pady=(15, 18)
+        )
+
+        def connect():
+            try:
+                self.gateway.connect(dsn.get().strip(), schema_user.get().strip(), schema_password.get())
+                save_settings(ConnectionSettings(dsn.get().strip(), schema_user.get().strip()))
+                self.show_auth()
+            except Exception as exc:
+                self.report_error(exc)
+
+        ttk.Button(form, text="Подключиться", style="Primary.TButton", command=connect).grid(row=5, column=0, columnspan=2, sticky="w")
+
+    def show_auth(self):
+        self.clear_page()
+        self.heading("Добро пожаловать", "Войдите, чтобы пройти тест, или создайте учетную запись участника.", with_navigation=False)
+        columns = ttk.Frame(self.page, style="App.TFrame")
+        columns.pack(fill="both", expand=True)
+        login_outer, login = self.panel(columns, padding=25)
+        login_outer.pack(side="left", fill="both", expand=True, padx=(0, 10))
+        register_outer, register = self.panel(columns, padding=25)
+        register_outer.pack(side="left", fill="both", expand=True, padx=(10, 0))
+
+        ttk.Label(login, text="Войти", style="CardTitle.TLabel").pack(anchor="w", pady=(0, 18))
+        ttk.Label(login, text="Логин", style="Card.TLabel").pack(anchor="w")
+        login_value = ttk.Entry(login)
+        login_value.pack(fill="x", pady=(5, 14))
+        ttk.Label(login, text="Пароль", style="Card.TLabel").pack(anchor="w")
+        password_value = ttk.Entry(login, show="*")
+        password_value.pack(fill="x", pady=(5, 18))
+
+        def authenticate():
+            try:
+                self.user = self.gateway.authenticate(login_value.get(), password_value.get())
+                self.show_catalog()
+            except Exception as exc:
+                self.report_error(exc)
+
+        ttk.Button(login, text="Войти", style="Primary.TButton", command=authenticate).pack(anchor="w")
+        ttk.Label(
+            login,
+            text="Демонстрационный администратор\nadmin / Admin123!",
+            style="Muted.TLabel",
+            justify="left",
+        ).pack(anchor="w", pady=(25, 0))
+
+        ttk.Label(register, text="Регистрация", style="CardTitle.TLabel").pack(anchor="w", pady=(0, 18))
+        ttk.Label(register, text="Имя", style="Card.TLabel").pack(anchor="w")
+        full_name = ttk.Entry(register)
+        full_name.pack(fill="x", pady=(5, 12))
+        ttk.Label(register, text="Логин", style="Card.TLabel").pack(anchor="w")
+        new_login = ttk.Entry(register)
+        new_login.pack(fill="x", pady=(5, 12))
+        ttk.Label(register, text="Пароль (от 6 символов)", style="Card.TLabel").pack(anchor="w")
+        new_password = ttk.Entry(register, show="*")
+        new_password.pack(fill="x", pady=(5, 18))
+
+        def register_user():
+            try:
+                self.gateway.register(new_login.get(), new_password.get(), full_name.get())
+                login_value.delete(0, "end")
+                login_value.insert(0, new_login.get())
+                messagebox.showinfo("Регистрация", "Учетная запись создана. Теперь войдите с вашим паролем.")
+            except Exception as exc:
+                self.report_error(exc)
+
+        ttk.Button(register, text="Создать учетную запись", style="Primary.TButton", command=register_user).pack(anchor="w")
+
+    def logout(self):
+        self.user = None
+        self.active_attempt_id = None
+        self.show_auth()
+
+    def show_catalog(self):
+        self.clear_page()
+        role_name = ROLE_NAMES.get(self.user.role_code, self.user.role_code)
+        self.heading(
+            "Доступные тесты",
+            f"{self.user.full_name}  |  {role_name}. Выберите тест и начните попытку.",
+        )
+        controls_outer, controls = self.panel(self.page, padding=12)
+        controls_outer.pack(fill="x", pady=(0, 12))
+        ttk.Label(controls, text="Фильтр по тематике", style="Card.TLabel").pack(side="left", padx=(0, 12))
+        topics = self.gateway.topics()
+        labels = ["Все тематики"] + [topic["title"] for topic in topics]
+        topic_by_label = {topic["title"]: topic["topic_id"] for topic in topics}
+        selected_topic = ttk.Combobox(controls, state="readonly", values=labels, width=38)
+        selected_topic.set(labels[0])
+        selected_topic.pack(side="left")
+
+        outer, content = self.panel(self.page, padding=15)
+        outer.pack(fill="both", expand=True)
+        columns = ("topic", "quiz", "questions", "duration", "points", "author")
+        tree = ttk.Treeview(content, columns=columns, show="headings", selectmode="browse")
+        headers = {
+            "topic": ("Тематика", 210),
+            "quiz": ("Тест", 300),
+            "questions": ("Вопросов", 90),
+            "duration": ("Минут", 75),
+            "points": ("Баллов", 75),
+            "author": ("Автор", 190),
+        }
+        for name, (title, width) in headers.items():
+            tree.heading(name, text=title)
+            tree.column(name, width=width, anchor="w" if name in ("topic", "quiz", "author") else "center")
+        tree.pack(fill="both", expand=True)
+        rows_by_id = {}
+
+        detail_outer, detail = self.panel(self.page, padding=15)
+        detail_outer.pack(fill="x", pady=(12, 0))
+        selected_title = ttk.Label(detail, text="Выберите тест из списка", style="CardTitle.TLabel")
+        selected_title.pack(anchor="w")
+        selected_info = ttk.Label(detail, text="Здесь появятся описание, время и количество вопросов.", style="Muted.TLabel", wraplength=840, justify="left")
+        selected_info.pack(anchor="w", pady=(6, 0))
+
+        footer = ttk.Frame(detail, style="Panel.TFrame")
+        footer.pack(side="right", anchor="e")
+
+        def load_catalog(_event=None):
+            for item in tree.get_children():
+                tree.delete(item)
+            rows_by_id.clear()
+            topic_id = topic_by_label.get(selected_topic.get())
+            try:
+                rows = self.gateway.catalog(self.user.user_id, topic_id)
+            except Exception as exc:
+                self.report_error(exc)
+                return
+            for row in rows:
+                tree.insert(
+                    "", "end", iid=str(row["quiz_id"]),
+                    values=(row["topic_title"], row["quiz_title"], row["question_count"], row["duration_minutes"], row["max_points"], row["author_name"]),
+                )
+                rows_by_id[str(row["quiz_id"])] = row
+            if rows:
+                tree.selection_set(str(rows[0]["quiz_id"]))
+                show_selected()
+            else:
+                selected_title.configure(text="По выбранной тематике тестов нет")
+                selected_info.configure(text="Администратор или автор может опубликовать новый тест в студии.")
+
+        selected_topic.bind("<<ComboboxSelected>>", load_catalog)
+
+        def start_selected():
+            chosen = tree.selection()
+            if not chosen:
+                messagebox.showwarning("Тест", "Выберите тест из каталога.")
+                return
+            try:
+                attempt_id = self.gateway.start_attempt(self.user.user_id, int(chosen[0]))
+                self.start_quiz_screen(attempt_id)
+            except Exception as exc:
+                self.report_error(exc)
+
+        def show_selected(_event=None):
+            chosen = tree.selection()
+            if not chosen or chosen[0] not in rows_by_id:
+                return
+            row = rows_by_id[chosen[0]]
+            selected_title.configure(text=row["quiz_title"])
+            description = row["description"] or "Описание не указано."
+            selected_info.configure(
+                text=f"{description}\n{row['question_count']} вопросов  |  {row['duration_minutes']} мин.  |  {row['max_points']} баллов  |  Автор: {row['author_name']}"
+            )
+
+        tree.bind("<<TreeviewSelect>>", show_selected)
+        tree.bind("<Double-1>", lambda _event: start_selected())
+        ttk.Button(footer, text="Начать выбранный тест", style="Primary.TButton", command=start_selected).pack(side="right")
+        load_catalog()
+
+    def start_quiz_screen(self, attempt_id):
+        self.active_attempt_id = attempt_id
+        try:
+            self.active_header = self.gateway.attempt_header(attempt_id)
+            self.active_questions = self.gateway.attempt_questions(attempt_id)
+        except Exception as exc:
+            self.report_error(exc)
+            self.show_catalog()
+            return
+        self.active_index = 0
+        self.remaining_seconds = int(self.active_header.get("remaining_seconds") or 0)
+        self.show_question()
+
+    def show_question(self):
+        self.clear_page()
+        if self.active_index >= len(self.active_questions):
+            self.finish_active_attempt()
+            return
+        question = self.active_questions[self.active_index]
+        total = len(self.active_questions)
+        self.heading(
+            self.active_header["quiz_title"],
+            f"Вопрос {self.active_index + 1} из {total} | {question['category_title']} | {question['difficulty_name']} | {question['points']} балл(а)",
+            with_navigation=False,
+        )
+        top = ttk.Frame(self.page, style="App.TFrame")
+        top.pack(fill="x", pady=(0, 14))
+        progress = ttk.Progressbar(top, maximum=total, value=self.active_index + 1)
+        progress.pack(side="left", fill="x", expand=True)
+        timer_label = tk.Label(top, bg=COLORS["bg"], fg=COLORS["gold"], font=("Segoe UI", 11, "bold"))
+        timer_label.pack(side="right", padx=(20, 0))
+        self.update_timer(timer_label)
+
+        outer, card = self.panel(self.page, padding=24)
+        outer.pack(fill="both", expand=True)
+        ttk.Label(card, text=question["question_text"], style="CardTitle.TLabel", wraplength=1040, justify="left").pack(anchor="w", pady=(0, 20))
+        type_code = question["type_code"]
+        selected_radio = tk.IntVar(value=-1)
+        selected_checks = {}
+        text_value = ttk.Entry(card, width=75)
+        if type_code in ("SINGLE_CHOICE", "BOOLEAN", "MULTIPLE_CHOICE"):
+            options = self.gateway.question_options(question["question_id"])
+            for option in options:
+                if type_code == "MULTIPLE_CHOICE":
+                    variable = tk.BooleanVar(value=False)
+                    selected_checks[option["option_id"]] = variable
+                    ttk.Checkbutton(card, text=option["option_text"], variable=variable).pack(anchor="w", pady=6)
+                else:
+                    ttk.Radiobutton(card, text=option["option_text"], variable=selected_radio, value=option["option_id"]).pack(anchor="w", pady=6)
+        else:
+            prompt = "Введите ответ"
+            if type_code == "ORDERING":
+                prompt = "Введите последовательность через точку с запятой"
+            ttk.Label(card, text=prompt, style="Card.TLabel").pack(anchor="w", pady=(0, 7))
+            text_value.pack(fill="x", anchor="w")
+
+        actions = ttk.Frame(card, style="Panel.TFrame")
+        actions.pack(fill="x", side="bottom", pady=(28, 0))
+
+        def submit_and_continue():
+            selected_ids = ""
+            answer_text = ""
+            if type_code == "MULTIPLE_CHOICE":
+                selected = [str(option_id) for option_id, value in selected_checks.items() if value.get()]
+                selected_ids = ",".join(selected)
+            elif type_code in ("SINGLE_CHOICE", "BOOLEAN"):
+                if selected_radio.get() != -1:
+                    selected_ids = str(selected_radio.get())
+            else:
+                answer_text = text_value.get().strip()
+            if not selected_ids and not answer_text:
+                messagebox.showwarning("Ответ", "Введите или выберите ответ перед продолжением.")
+                return
+            try:
+                self.gateway.submit_answer(self.active_attempt_id, question["question_id"], selected_ids, answer_text)
+                self.active_index += 1
+                self.show_question()
+            except Exception as exc:
+                self.report_error(exc)
+
+        ttk.Button(actions, text="Сохранить ответ и далее", style="Primary.TButton", command=submit_and_continue).pack(side="right")
+        ttk.Button(actions, text="Завершить тест", style="Quiet.TButton", command=self.finish_active_attempt).pack(side="right", padx=(0, 10))
+
+    def update_timer(self, label):
+        if self.remaining_seconds is None:
+            return
+        seconds = max(0, self.remaining_seconds)
+        minutes, remainder = divmod(seconds, 60)
+        label.configure(text=f"Осталось {minutes:02d}:{remainder:02d}")
+        if seconds <= 0:
+            messagebox.showinfo("Время", "Время теста истекло. Попытка будет завершена.")
+            self.finish_active_attempt()
+            return
+        self.remaining_seconds -= 1
+        self.timer_job = self.after(1000, lambda: self.update_timer(label))
+
+    def cancel_timer(self):
+        if self.timer_job:
+            self.after_cancel(self.timer_job)
+            self.timer_job = None
+
+    def finish_active_attempt(self):
+        self.cancel_timer()
+        if self.active_attempt_id is None:
+            return
+        attempt_id = self.active_attempt_id
+        try:
+            self.gateway.finish_attempt(attempt_id)
+        except Exception as exc:
+            self.report_error(exc)
+            return
+        self.active_attempt_id = None
+        self.remaining_seconds = None
+        self.show_result(attempt_id)
+
+    def show_result(self, attempt_id):
+        self.clear_page()
+        try:
+            result = self.gateway.attempt_result(attempt_id)
+            header = self.gateway.attempt_header(attempt_id)
+            details = self.gateway.attempt_details(attempt_id)
+        except Exception as exc:
+            self.report_error(exc)
+            self.show_history()
+            return
+        self.heading("Результат попытки", f"{result['topic_title']} | {result['quiz_title']}")
+        summary_outer, summary = self.panel(self.page, padding=18)
+        summary_outer.pack(fill="x", pady=(0, 14))
+        cells = [
+            ("Итог", f"{result['score_percent'] or 0}%"),
+            ("Баллы", f"{result['awarded_points'] or 0} / {result['max_points'] or 0}"),
+            ("Верно", f"{result['correct_count']} / {result['question_count']}"),
+            ("Статус", result["status"]),
+        ]
+        for index, (title, value) in enumerate(cells):
+            frame = ttk.Frame(summary, style="Panel.TFrame")
+            frame.grid(row=0, column=index, sticky="ew", padx=(0 if index == 0 else 18, 0))
+            ttk.Label(frame, text=title, style="Muted.TLabel").pack(anchor="w")
+            ttk.Label(frame, text=str(value), style="CardTitle.TLabel").pack(anchor="w", pady=(5, 0))
+            summary.columnconfigure(index, weight=1)
+
+        outer, body = self.panel(self.page, padding=15)
+        outer.pack(fill="both", expand=True)
+        show_feedback = int(header["show_feedback"]) == 1
+        columns = ("number", "status", "question", "given", "correct")
+        tree = ttk.Treeview(body, columns=columns, show="headings")
+        for name, title, width in (
+            ("number", "#", 45),
+            ("status", "Результат", 100),
+            ("question", "Вопрос", 350),
+            ("given", "Ваш ответ", 250),
+            ("correct", "Правильный ответ" if show_feedback else "Обратная связь", 250),
+        ):
+            tree.heading(name, text=title)
+            tree.column(name, width=width)
+        tree.pack(fill="both", expand=True)
+        for row in details:
+            status = "Верно" if row["is_correct"] == 1 else "Ошибка" if row["is_correct"] == 0 else "Пропущено"
+            correct = row["correct_answer"] if show_feedback else "Скрыто настройками теста"
+            tree.insert("", "end", values=(row["display_order"], status, row["question_text"], row["given_answer"] or "-", correct or "-"))
+
+    def show_history(self):
+        self.clear_page()
+        self.heading("История попыток", "Результаты рассчитываются и хранятся в Oracle.")
+        outer, content = self.panel(self.page, padding=15)
+        outer.pack(fill="both", expand=True)
+        columns = ("topic", "quiz", "date", "status", "score", "correct")
+        tree = ttk.Treeview(content, columns=columns, show="headings", selectmode="browse")
+        for name, title, width in (
+            ("topic", "Тематика", 210), ("quiz", "Тест", 310), ("date", "Начало", 175),
+            ("status", "Статус", 110), ("score", "%", 75), ("correct", "Верно", 95),
+        ):
+            tree.heading(name, text=title)
+            tree.column(name, width=width)
+        tree.pack(fill="both", expand=True)
+        for result in self.gateway.history(self.user.user_id):
+            tree.insert(
+                "", "end", iid=str(result["attempt_id"]),
+                values=(result["topic_title"], result["quiz_title"], result["started_at"], result["status"], result["score_percent"] or "-", f"{result['correct_count']}/{result['question_count']}"),
+            )
+        ttk.Button(
+            self.page, text="Открыть результат", style="Primary.TButton",
+            command=lambda: self.show_result(int(tree.selection()[0])) if tree.selection() else messagebox.showwarning("История", "Выберите попытку."),
+        ).pack(anchor="e", pady=(13, 0))
+
+    def show_admin(self, selected_tab=None):
+        self.clear_page()
+        role_name = ROLE_NAMES.get(self.user.role_code, self.user.role_code)
+        self.heading("Студия тестов", f"{role_name}: материалы, вопросы, публикация и результаты в одном рабочем пространстве.")
+        notebook = ttk.Notebook(self.page)
+        notebook.pack(fill="both", expand=True)
+        self.build_admin_dictionaries(notebook)
+        self.build_admin_quiz_editor(notebook)
+        self.build_admin_question_editor(notebook)
+        self.build_admin_publication(notebook)
+        self.build_admin_statistics(notebook)
+        if self.user.role_code == "ADMIN":
+            self.build_admin_progress(notebook)
+            self.build_admin_users(notebook)
+        if selected_tab:
+            for tab_id in notebook.tabs():
+                if notebook.tab(tab_id, "text") == selected_tab:
+                    notebook.select(tab_id)
+                    break
+
+    def build_admin_dictionaries(self, notebook):
+        tab = ttk.Frame(notebook, style="App.TFrame", padding=16)
+        notebook.add(tab, text="Материалы")
+        topic_outer, topic = self.panel(tab, padding=18)
+        topic_outer.pack(side="left", fill="both", expand=True, padx=(0, 8))
+        category_outer, category = self.panel(tab, padding=18)
+        category_outer.pack(side="left", fill="both", expand=True, padx=(8, 0))
+        ttk.Label(topic, text="Тематики", style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(topic, text="Области знаний, в которых находятся тесты.", style="Muted.TLabel").pack(anchor="w", pady=(3, 14))
+        ttk.Label(topic, text="Название", style="Muted.TLabel").pack(anchor="w")
+        topic_title = ttk.Entry(topic)
+        topic_title.pack(fill="x", pady=(3, 9))
+        ttk.Label(topic, text="Описание", style="Muted.TLabel").pack(anchor="w")
+        topic_description = tk.Text(topic, height=3, bg="#ffffff", relief="solid", bd=1, font=("Segoe UI", 10))
+        topic_description.pack(fill="x", pady=(3, 12))
+        topic_actions = ttk.Frame(topic, style="Panel.TFrame")
+        topic_actions.pack(fill="x", pady=(0, 14))
+        topic_tree = ttk.Treeview(topic, columns=("title", "categories", "tests"), show="headings", height=6)
+        for name, title_text, width in (("title", "Тематика", 235), ("categories", "Категорий", 85), ("tests", "Тестов", 70)):
+            topic_tree.heading(name, text=title_text)
+            topic_tree.column(name, width=width)
+        topic_tree.pack(fill="both", expand=True)
+
+        ttk.Label(category, text="Категории вопросов", style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(category, text="Автор может сразу добавить категорию для своего нового теста.", style="Muted.TLabel").pack(anchor="w", pady=(3, 14))
+        ttk.Label(category, text="Тематика", style="Muted.TLabel").pack(anchor="w")
+        topic_combo = ttk.Combobox(category, state="readonly")
+        topic_combo.pack(fill="x", pady=(3, 9))
+        ttk.Label(category, text="Название категории", style="Muted.TLabel").pack(anchor="w")
+        category_title = ttk.Entry(category)
+        category_title.pack(fill="x", pady=(3, 12))
+        category_actions = ttk.Frame(category, style="Panel.TFrame")
+        category_actions.pack(fill="x", pady=(0, 14))
+        category_tree = ttk.Treeview(category, columns=("title", "questions"), show="headings", height=8)
+        category_tree.heading("title", text="Категория")
+        category_tree.column("title", width=295)
+        category_tree.heading("questions", text="Вопросов")
+        category_tree.column("questions", width=85)
+        category_tree.pack(fill="both", expand=True)
+
+        def refresh_topics():
+            rows = self.gateway.admin_topics()
+            values = [f"{row['topic_id']} | {row['title']}" for row in rows]
+            current = topic_combo.get()
+            topic_combo["values"] = values
+            for item in topic_tree.get_children():
+                topic_tree.delete(item)
+            for row in rows:
+                topic_tree.insert("", "end", iid=str(row["topic_id"]), values=(row["title"], row["category_count"], row["quiz_count"]))
+            if current in values:
+                topic_combo.set(current)
+            elif values:
+                topic_combo.set(values[0])
+            refresh_categories()
+
+        def refresh_categories(_event=None):
+            for item in category_tree.get_children():
+                category_tree.delete(item)
+            if not topic_combo.get():
+                return
+            topic_id = int(topic_combo.get().split("|", 1)[0])
+            for row in self.gateway.admin_categories(topic_id):
+                category_tree.insert("", "end", iid=str(row["category_id"]), values=(row["title"], row["question_count"]))
+
+        def select_topic(_event=None):
+            if not topic_tree.selection():
+                return
+            topic_id = topic_tree.selection()[0]
+            for value in topic_combo["values"]:
+                if value.startswith(f"{topic_id} |"):
+                    topic_combo.set(value)
+                    refresh_categories()
+                    break
+
+        def create_topic():
+            if not topic_title.get().strip():
+                messagebox.showwarning("Тематика", "Введите название тематики.")
+                return
+            try:
+                self.gateway.create_topic(self.user.user_id, topic_title.get().strip(), topic_description.get("1.0", "end").strip())
+                messagebox.showinfo("Тематика", "Тематика создана.")
+                self.show_admin("Материалы")
+            except Exception as exc:
+                self.report_error(exc)
+
+        def create_category():
+            if not topic_combo.get() or not category_title.get().strip():
+                messagebox.showwarning("Категория", "Выберите тематику и введите название категории.")
+                return
+            try:
+                topic_id = int(topic_combo.get().split("|", 1)[0])
+                self.gateway.create_category(self.user.user_id, topic_id, category_title.get().strip())
+                messagebox.showinfo("Категория", "Категория создана и уже доступна в конструкторе вопросов.")
+                self.show_admin("Материалы")
+            except Exception as exc:
+                self.report_error(exc)
+
+        def delete_topic():
+            if not topic_tree.selection():
+                messagebox.showwarning("Тематика", "Выберите тематику в списке.")
+                return
+            topic_id = int(topic_tree.selection()[0])
+            title = topic_tree.item(topic_tree.selection()[0], "values")[0]
+            if not messagebox.askyesno("Удалить тематику", f"Удалить тематику «{title}»?\nУдаление возможно только если она пустая."):
+                return
+            try:
+                self.gateway.delete_topic(self.user.user_id, topic_id)
+                self.show_admin("Материалы")
+            except Exception as exc:
+                self.report_error(exc)
+
+        def delete_category():
+            if not category_tree.selection():
+                messagebox.showwarning("Категория", "Выберите категорию в списке.")
+                return
+            category_id = int(category_tree.selection()[0])
+            title = category_tree.item(category_tree.selection()[0], "values")[0]
+            if not messagebox.askyesno("Удалить категорию", f"Удалить категорию «{title}»?\nИспользуемые в вопросах категории защищены."):
+                return
+            try:
+                self.gateway.delete_category(self.user.user_id, category_id)
+                self.show_admin("Материалы")
+            except Exception as exc:
+                self.report_error(exc)
+
+        ttk.Button(topic_actions, text="Добавить", style="Primary.TButton", command=create_topic).pack(side="left")
+        ttk.Button(category_actions, text="Добавить", style="Primary.TButton", command=create_category).pack(side="left")
+        if self.user.role_code == "ADMIN":
+            ttk.Button(topic_actions, text="Удалить выбранную", style="Danger.TButton", command=delete_topic).pack(side="left", padx=(8, 0))
+            ttk.Button(category_actions, text="Удалить выбранную", style="Danger.TButton", command=delete_category).pack(side="left", padx=(8, 0))
+        topic_combo.bind("<<ComboboxSelected>>", refresh_categories)
+        topic_tree.bind("<<TreeviewSelect>>", select_topic)
+        refresh_topics()
+
+    def build_admin_quiz_editor(self, notebook):
+        tab = ttk.Frame(notebook, style="App.TFrame", padding=16)
+        notebook.add(tab, text="Новый тест")
+        outer, form = self.panel(tab, padding=22)
+        outer.pack(fill="x", padx=(145, 145), pady=(10, 0))
+        ttk.Label(form, text="Новый тест", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=2, sticky="w")
+        ttk.Label(form, text="Сначала создайте черновик, затем заполните его вопросами на следующем шаге.", style="Muted.TLabel").grid(
+            row=1, column=0, columnspan=2, sticky="w", pady=(3, 18)
+        )
+        topics = self.gateway.admin_topics()
+        topic_values = [f"{row['topic_id']} | {row['title']}" for row in topics]
+        ttk.Label(form, text="Тематика", style="Card.TLabel").grid(row=2, column=0, sticky="w", pady=7)
+        quiz_topic = ttk.Combobox(form, values=topic_values, state="readonly", width=48)
+        quiz_topic.grid(row=2, column=1, sticky="ew", padx=(20, 0), pady=7)
+        if topic_values:
+            quiz_topic.set(topic_values[0])
+        ttk.Label(form, text="Название теста", style="Card.TLabel").grid(row=3, column=0, sticky="w", pady=7)
+        quiz_title = ttk.Entry(form)
+        quiz_title.grid(row=3, column=1, sticky="ew", padx=(20, 0), pady=7)
+        ttk.Label(form, text="Краткое описание", style="Card.TLabel").grid(row=4, column=0, sticky="nw", pady=7)
+        quiz_description = tk.Text(form, height=3, bg="#ffffff", relief="solid", bd=1, font=("Segoe UI", 10))
+        quiz_description.grid(row=4, column=1, sticky="ew", padx=(20, 0), pady=7)
+        ttk.Label(form, text="Время на прохождение", style="Card.TLabel").grid(row=5, column=0, sticky="w", pady=7)
+        duration_row = ttk.Frame(form, style="Panel.TFrame")
+        duration_row.grid(row=5, column=1, sticky="ew", padx=(20, 0), pady=7)
+        duration = ttk.Entry(duration_row, width=14)
+        duration.insert(0, "15")
+        duration.pack(side="left")
+        ttk.Label(duration_row, text="минут", style="Muted.TLabel").pack(side="left", padx=(10, 0))
+        ttk.Label(form, text="Доступ", style="Card.TLabel").grid(row=6, column=0, sticky="w", pady=7)
+        access = ttk.Combobox(form, values=["Публичный", "По приглашению"], state="readonly")
+        access.set("Публичный")
+        access.grid(row=6, column=1, sticky="ew", padx=(20, 0), pady=7)
+        feedback = tk.BooleanVar(value=True)
+        ttk.Checkbutton(form, text="Показывать правильные ответы после завершения", variable=feedback).grid(
+            row=7, column=1, sticky="w", padx=(20, 0), pady=(8, 17)
+        )
+        form.columnconfigure(1, weight=1)
+
+        def create_quiz():
+            if not quiz_topic.get() or not quiz_title.get().strip():
+                messagebox.showwarning("Тест", "Выберите тематику и укажите название теста.")
+                return
+            try:
+                topic_id = int(quiz_topic.get().split("|", 1)[0])
+                self.gateway.create_quiz(
+                    self.user.user_id, topic_id, quiz_title.get().strip(), quiz_description.get("1.0", "end").strip(), int(duration.get()),
+                    int(feedback.get()), "PUBLIC" if access.get() == "Публичный" else "RESTRICTED",
+                )
+                messagebox.showinfo("Тест", "Черновик теста создан. Добавьте вопросы и опубликуйте его.")
+                self.show_admin("Вопросы")
+            except Exception as exc:
+                self.report_error(exc)
+
+        ttk.Button(form, text="Создать черновик и перейти к вопросам", style="Primary.TButton", command=create_quiz).grid(
+            row=8, column=1, sticky="w", padx=(20, 0)
+        )
+
+    def build_admin_question_editor(self, notebook):
+        tab = ttk.Frame(notebook, style="App.TFrame", padding=16)
+        notebook.add(tab, text="Вопросы")
+        form_outer, form = self.panel(tab, padding=16)
+        form_outer.pack(side="left", fill="both", expand=True, padx=(0, 7))
+        list_outer, listing = self.panel(tab, padding=16)
+        list_outer.pack(side="left", fill="both", expand=True, padx=(7, 0))
+        ttk.Label(form, text="Добавить вопрос", style="CardTitle.TLabel").pack(anchor="w", pady=(0, 9))
+        drafts = [row for row in self.gateway.admin_quizzes(self.user) if row["status"] == "DRAFT"]
+        quiz_values = [f"{row['quiz_id']} | {row['title']}" for row in drafts]
+        draft_topics = {row["quiz_id"]: row["topic_id"] for row in drafts}
+        types, difficulties = self.gateway.dictionaries()
+        type_values = [f"{row['type_code']} | {row['type_name']}" for row in types]
+        diff_values = [f"{row['difficulty_code']} | {row['difficulty_name']}" for row in difficulties]
+        ttk.Label(form, text="Черновик теста", style="Muted.TLabel").pack(anchor="w")
+        q_quiz = ttk.Combobox(form, values=quiz_values, state="readonly")
+        q_quiz.pack(fill="x", pady=(3, 7))
+        ttk.Label(form, text="Категория вопроса", style="Muted.TLabel").pack(anchor="w")
+        q_category = ttk.Combobox(form, state="readonly")
+        q_category.pack(fill="x", pady=(3, 7))
+        question_settings = ttk.Frame(form, style="Panel.TFrame")
+        question_settings.pack(fill="x", pady=(0, 7))
+        type_field = ttk.Frame(question_settings, style="Panel.TFrame")
+        type_field.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        difficulty_field = ttk.Frame(question_settings, style="Panel.TFrame")
+        difficulty_field.pack(side="left", fill="x", expand=True, padx=(5, 0))
+        ttk.Label(type_field, text="Тип ответа", style="Muted.TLabel").pack(anchor="w")
+        q_type = ttk.Combobox(type_field, values=type_values, state="readonly")
+        q_type.pack(fill="x", pady=(3, 0))
+        ttk.Label(difficulty_field, text="Сложность", style="Muted.TLabel").pack(anchor="w")
+        q_diff = ttk.Combobox(difficulty_field, values=diff_values, state="readonly")
+        q_diff.pack(fill="x", pady=(3, 0))
+        for box, values in ((q_quiz, quiz_values), (q_type, type_values), (q_diff, diff_values)):
+            if values:
+                box.set(values[0])
+        ttk.Label(form, text="Текст вопроса", style="Muted.TLabel").pack(anchor="w")
+        q_text = ttk.Entry(form)
+        q_text.pack(fill="x", pady=(3, 7))
+        scoring = ttk.Frame(form, style="Panel.TFrame")
+        scoring.pack(fill="x", pady=(0, 7))
+        expected_field = ttk.Frame(scoring, style="Panel.TFrame")
+        expected_field.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        points_field = ttk.Frame(scoring, style="Panel.TFrame")
+        points_field.pack(side="left", padx=(5, 0))
+        ttk.Label(expected_field, text="Эталонный ответ для текста/числа", style="Muted.TLabel").pack(anchor="w")
+        expected = ttk.Entry(expected_field)
+        expected.pack(fill="x", pady=(3, 0))
+        ttk.Label(points_field, text="Баллы", style="Muted.TLabel").pack(anchor="w")
+        points = ttk.Entry(points_field, width=10)
+        points.insert(0, "1")
+        points.pack(pady=(3, 0))
+        ttk.Label(form, text="Пояснение после проверки", style="Muted.TLabel").pack(anchor="w")
+        explanation = ttk.Entry(form)
+        explanation.pack(fill="x", pady=(3, 7))
+        ttk.Label(form, text="Варианты выбора: один вариант в каждой строке", style="Muted.TLabel").pack(anchor="w", pady=(3, 2))
+        options = tk.Text(form, height=3, bg="#ffffff", relief="solid", bd=1, font=("Segoe UI", 9))
+        options.pack(fill="x", pady=3)
+        ttk.Label(form, text="Номера правильных вариантов (например, 1 или 1,3)", style="Muted.TLabel").pack(anchor="w", pady=(3, 2))
+        correct = ttk.Entry(form)
+        correct.pack(fill="x", pady=3)
+
+        ttk.Label(listing, text="Вопросы выбранного черновика", style="CardTitle.TLabel").pack(anchor="w", pady=(0, 9))
+        question_tree = ttk.Treeview(listing, columns=("number", "text", "type", "points"), show="headings")
+        for name, title, width in (("number", "#", 38), ("text", "Вопрос", 260), ("type", "Тип", 120), ("points", "Баллы", 60)):
+            question_tree.heading(name, text=title)
+            question_tree.column(name, width=width)
+        question_tree.pack(fill="both", expand=True)
+
+        def refresh_question_context(_event=None):
+            for item in question_tree.get_children():
+                question_tree.delete(item)
+            if not q_quiz.get():
+                q_category["values"] = []
+                q_category.set("")
+                return
+            quiz_id = int(q_quiz.get().split("|", 1)[0])
+            topic_id = draft_topics[quiz_id]
+            categories = self.gateway.admin_categories(topic_id)
+            category_values = [f"{row['category_id']} | {row['title']}" for row in categories]
+            q_category["values"] = category_values
+            q_category.set(category_values[0] if category_values else "")
+            for row in self.gateway.admin_questions(quiz_id):
+                question_tree.insert("", "end", iid=str(row["question_id"]), values=(row["seq_no"], row["question_text"], row["type_code"], row["points"]))
+
+        def add_question():
+            if not q_quiz.get() or not q_category.get() or not q_text.get().strip():
+                messagebox.showwarning("Вопрос", "Выберите черновик и категорию, затем введите текст вопроса.")
+                return
+            try:
+                type_code = q_type.get().split("|", 1)[0].strip()
+                options_list = []
+                if type_code in ("SINGLE_CHOICE", "MULTIPLE_CHOICE", "BOOLEAN"):
+                    raw_options = [line.strip() for line in options.get("1.0", "end").splitlines() if line.strip()]
+                    indexes = {int(value.strip()) for value in correct.get().split(",") if value.strip().isdigit()}
+                    if not raw_options or not indexes:
+                        messagebox.showwarning("Вопрос", "Для вопроса с выбором заполните варианты и номер правильного ответа.")
+                        return
+                    options_list = [(text, int(index in indexes)) for index, text in enumerate(raw_options, 1)]
+                self.gateway.create_question(
+                    self.user.user_id,
+                    int(q_quiz.get().split("|", 1)[0]),
+                    int(q_category.get().split("|", 1)[0]),
+                    type_code,
+                    q_diff.get().split("|", 1)[0].strip(),
+                    q_text.get().strip(),
+                    expected.get().strip() if type_code not in ("SINGLE_CHOICE", "MULTIPLE_CHOICE", "BOOLEAN") else "",
+                    explanation.get().strip(),
+                    float(points.get()),
+                    options_list,
+                )
+                messagebox.showinfo("Вопрос", "Вопрос добавлен в черновик.")
+                self.show_admin("Вопросы")
+            except Exception as exc:
+                self.report_error(exc)
+
+        def delete_question():
+            if not question_tree.selection():
+                messagebox.showwarning("Вопрос", "Выберите вопрос в списке.")
+                return
+            if not messagebox.askyesno("Удалить вопрос", "Удалить выбранный вопрос из черновика?"):
+                return
+            try:
+                self.gateway.delete_question(self.user.user_id, int(question_tree.selection()[0]))
+                self.show_admin("Вопросы")
+            except Exception as exc:
+                self.report_error(exc)
+
+        ttk.Button(form, text="Добавить вопрос", style="Primary.TButton", command=add_question).pack(anchor="w", pady=(8, 0))
+        if self.user.role_code == "ADMIN":
+            ttk.Button(listing, text="Удалить выбранный вопрос", style="Danger.TButton", command=delete_question).pack(anchor="e", pady=(10, 0))
+        q_quiz.bind("<<ComboboxSelected>>", refresh_question_context)
+        refresh_question_context()
+
+    def build_admin_publication(self, notebook):
+        tab = ttk.Frame(notebook, style="App.TFrame", padding=16)
+        notebook.add(tab, text="Публикация")
+        outer, content = self.panel(tab, padding=15)
+        outer.pack(fill="both", expand=True)
+        ttk.Label(content, text="Управление тестами", style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(content, text="Публикуйте готовые черновики и выдавайте доступ к закрытым тестам.", style="Muted.TLabel").pack(anchor="w", pady=(3, 12))
+        tree = ttk.Treeview(content, columns=("topic", "title", "access", "status"), show="headings")
+        for name, title, width in (("topic", "Тематика", 250), ("title", "Тест", 390), ("access", "Доступ", 130), ("status", "Статус", 130)):
+            tree.heading(name, text=title)
+            tree.column(name, width=width)
+        tree.pack(fill="both", expand=True)
+        quizzes = self.gateway.admin_quizzes(self.user)
+        for row in quizzes:
+            tree.insert(
+                "", "end", iid=str(row["quiz_id"]),
+                values=(row["topic_title"], row["title"], ACCESS_NAMES.get(row["access_mode"], row["access_mode"]), STATUS_NAMES.get(row["status"], row["status"])),
+            )
+
+        def publish():
+            if not tree.selection():
+                return
+            try:
+                self.gateway.publish_quiz(self.user.user_id, int(tree.selection()[0]))
+                messagebox.showinfo("Публикация", "Тест опубликован и доступен в каталоге.")
+                self.show_admin("Публикация")
+            except Exception as exc:
+                self.report_error(exc)
+
+        actions = ttk.Frame(tab, style="App.TFrame")
+        actions.pack(fill="x", pady=(12, 0))
+        ttk.Button(actions, text="Опубликовать выбранный тест", style="Primary.TButton", command=publish).pack(side="right")
+        restricted = [row for row in quizzes if row["access_mode"] == "RESTRICTED"]
+        users = self.gateway.users()
+        access_quiz = ttk.Combobox(actions, values=[f"{row['quiz_id']} | {row['title']}" for row in restricted], state="readonly", width=29)
+        access_user = ttk.Combobox(actions, values=[f"{row['user_id']} | {row['login']}" for row in users], state="readonly", width=24)
+        access_quiz.pack(side="left", padx=(0, 7))
+        access_user.pack(side="left", padx=(0, 7))
+        if restricted:
+            access_quiz.set(f"{restricted[0]['quiz_id']} | {restricted[0]['title']}")
+        if users:
+            access_user.set(f"{users[0]['user_id']} | {users[0]['login']}")
+
+        def grant_access():
+            if not access_quiz.get() or not access_user.get():
+                messagebox.showwarning("Доступ", "Выберите закрытый тест и пользователя.")
+                return
+            try:
+                self.gateway.grant_access(
+                    self.user.user_id,
+                    int(access_quiz.get().split("|", 1)[0]),
+                    int(access_user.get().split("|", 1)[0]),
+                )
+                messagebox.showinfo("Доступ", "Доступ к закрытому тесту выдан.")
+            except Exception as exc:
+                self.report_error(exc)
+
+        ttk.Button(actions, text="Выдать доступ", style="Quiet.TButton", command=grant_access).pack(side="left")
+
+        def delete_quiz():
+            if not tree.selection():
+                messagebox.showwarning("Тест", "Выберите черновик в таблице.")
+                return
+            if not messagebox.askyesno("Удалить черновик", "Удалить выбранный черновик вместе с его вопросами?"):
+                return
+            try:
+                self.gateway.delete_quiz(self.user.user_id, int(tree.selection()[0]))
+                self.show_admin("Публикация")
+            except Exception as exc:
+                self.report_error(exc)
+
+        def archive_quiz():
+            if not tree.selection():
+                messagebox.showwarning("Тест", "Выберите опубликованный тест в таблице.")
+                return
+            if not messagebox.askyesno("Архивировать тест", "Снять тест с публикации? Результаты прохождений сохранятся."):
+                return
+            try:
+                self.gateway.archive_quiz(self.user.user_id, int(tree.selection()[0]))
+                self.show_admin("Публикация")
+            except Exception as exc:
+                self.report_error(exc)
+
+        if self.user.role_code == "ADMIN":
+            ttk.Button(actions, text="Удалить черновик", style="Danger.TButton", command=delete_quiz).pack(side="right", padx=(0, 9))
+            ttk.Button(actions, text="Архивировать", style="Quiet.TButton", command=archive_quiz).pack(side="right", padx=(0, 9))
+
+    def build_admin_statistics(self, notebook):
+        tab = ttk.Frame(notebook, style="App.TFrame", padding=16)
+        notebook.add(tab, text="Аналитика")
+        quiz_outer, quiz_panel = self.panel(tab, padding=12)
+        quiz_outer.pack(fill="x", pady=(0, 12))
+        quiz_tree = ttk.Treeview(quiz_panel, columns=("topic", "quiz", "attempts", "average"), show="headings", height=5)
+        for name, title, width in (("topic", "Тематика", 270), ("quiz", "Тест", 410), ("attempts", "Попыток", 110), ("average", "Средний %", 120)):
+            quiz_tree.heading(name, text=title)
+            quiz_tree.column(name, width=width)
+        quiz_tree.pack(fill="x")
+        stats = self.gateway.quiz_statistics(self.user)
+        for row in stats:
+            quiz_tree.insert("", "end", iid=str(row["quiz_id"]), values=(row["topic_title"], row["quiz_title"], row["attempts_count"], row["average_score"] or "-"))
+        details_outer, details = self.panel(tab, padding=12)
+        details_outer.pack(fill="both", expand=True)
+        question_tree = ttk.Treeview(details, columns=("question", "answers", "percent"), show="headings")
+        for name, title, width in (("question", "Вопрос", 700), ("answers", "Ответов", 110), ("percent", "Верно, %", 120)):
+            question_tree.heading(name, text=title)
+            question_tree.column(name, width=width)
+        question_tree.pack(fill="both", expand=True)
+
+        def show_question_stats(_event=None):
+            for item in question_tree.get_children():
+                question_tree.delete(item)
+            if not quiz_tree.selection():
+                return
+            for row in self.gateway.question_statistics(int(quiz_tree.selection()[0])):
+                question_tree.insert("", "end", values=(row["question_text"], row["answer_count"], row["correct_percent"]))
+
+        quiz_tree.bind("<<TreeviewSelect>>", show_question_stats)
+
+    def build_admin_progress(self, notebook):
+        tab = ttk.Frame(notebook, style="App.TFrame", padding=16)
+        notebook.add(tab, text="Прогресс")
+        users_outer, users_panel = self.panel(tab, padding=16)
+        users_outer.pack(side="left", fill="both", expand=True, padx=(0, 7))
+        quizzes_outer, quizzes_panel = self.panel(tab, padding=16)
+        quizzes_outer.pack(side="left", fill="both", expand=True, padx=(7, 0))
+
+        ttk.Label(users_panel, text="Прогресс пользователей", style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(users_panel, text="Выберите аккаунт для просмотра его попыток.", style="Muted.TLabel").pack(anchor="w", pady=(3, 12))
+        users_tree = ttk.Treeview(users_panel, columns=("name", "login", "attempts"), show="headings")
+        for name, title, width in (("name", "Пользователь", 220), ("login", "Логин", 125), ("attempts", "Попыток", 70)):
+            users_tree.heading(name, text=title)
+            users_tree.column(name, width=width)
+        users_tree.pack(fill="both", expand=True)
+
+        ttk.Label(quizzes_panel, text="Попытки по тестам", style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(
+            quizzes_panel,
+            text="Сброс удаляет результаты и незавершенные попытки, но не меняет логин, пароль или роль.",
+            style="Muted.TLabel",
+            wraplength=470,
+        ).pack(anchor="w", pady=(3, 12))
+        quiz_tree = ttk.Treeview(quizzes_panel, columns=("topic", "quiz", "attempts"), show="headings")
+        for name, title, width in (("topic", "Тематика", 155), ("quiz", "Тест", 220), ("attempts", "Попыток", 70)):
+            quiz_tree.heading(name, text=title)
+            quiz_tree.column(name, width=width)
+        quiz_tree.pack(fill="both", expand=True)
+
+        for row in self.gateway.user_progress_summary():
+            users_tree.insert(
+                "", "end", iid=str(row["user_id"]),
+                values=(row["full_name"], row["login"], row["attempt_count"]),
+            )
+
+        def selected_user_id():
+            if not users_tree.selection():
+                messagebox.showwarning("Прогресс", "Выберите пользователя.")
+                return None
+            return int(users_tree.selection()[0])
+
+        def show_attempts(_event=None):
+            for item in quiz_tree.get_children():
+                quiz_tree.delete(item)
+            user_id = selected_user_id()
+            if user_id is None:
+                return
+            for row in self.gateway.user_quiz_progress(user_id):
+                quiz_tree.insert(
+                    "", "end", iid=str(row["quiz_id"]),
+                    values=(row["topic_title"], row["quiz_title"], row["attempt_count"]),
+                )
+
+        def reset_quiz_attempts():
+            user_id = selected_user_id()
+            if user_id is None:
+                return
+            if not quiz_tree.selection():
+                messagebox.showwarning("Прогресс", "Выберите тест в правой таблице.")
+                return
+            quiz_id = int(quiz_tree.selection()[0])
+            quiz_title = quiz_tree.item(quiz_tree.selection()[0], "values")[1]
+            if not messagebox.askyesno(
+                "Сбросить попытки",
+                f"Удалить все попытки выбранного пользователя по тесту «{quiz_title}»?\nЭто действие нельзя отменить.",
+            ):
+                return
+            try:
+                self.gateway.reset_user_quiz_attempts(self.user.user_id, user_id, quiz_id)
+                messagebox.showinfo("Прогресс", "Попытки по выбранному тесту удалены.")
+                self.show_admin("Прогресс")
+            except Exception as exc:
+                self.report_error(exc)
+
+        def reset_all_attempts():
+            user_id = selected_user_id()
+            if user_id is None:
+                return
+            name = users_tree.item(users_tree.selection()[0], "values")[0]
+            if not messagebox.askyesno(
+                "Обнулить прогресс",
+                f"Удалить всю историю тестирования пользователя «{name}»?\nЛогин и роль сохранятся. Действие нельзя отменить.",
+            ):
+                return
+            try:
+                self.gateway.reset_user_progress(self.user.user_id, user_id)
+                messagebox.showinfo("Прогресс", "Весь прогресс пользователя обнулен.")
+                self.show_admin("Прогресс")
+            except Exception as exc:
+                self.report_error(exc)
+
+        buttons = ttk.Frame(quizzes_panel, style="Panel.TFrame")
+        buttons.pack(fill="x", pady=(12, 0))
+        ttk.Button(buttons, text="Сбросить выбранный тест", style="Danger.TButton", command=reset_quiz_attempts).pack(side="left")
+        ttk.Button(buttons, text="Обнулить весь прогресс", style="Danger.TButton", command=reset_all_attempts).pack(side="right")
+        users_tree.bind("<<TreeviewSelect>>", show_attempts)
+        if users_tree.get_children():
+            users_tree.selection_set(users_tree.get_children()[0])
+            show_attempts()
+
+    def build_admin_users(self, notebook):
+        tab = ttk.Frame(notebook, style="App.TFrame", padding=16)
+        notebook.add(tab, text="Команда")
+        creator_outer, creator = self.panel(tab, padding=16)
+        creator_outer.pack(fill="x", pady=(0, 12))
+        ttk.Label(creator, text="Добавить автора", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=4, sticky="w")
+        ttk.Label(
+            creator,
+            text="Автор входит по своему логину и может собирать, публиковать и анализировать тесты.",
+            style="Muted.TLabel",
+        ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(4, 14))
+        ttk.Label(creator, text="Имя автора", style="Muted.TLabel").grid(row=2, column=0, sticky="w")
+        ttk.Label(creator, text="Логин", style="Muted.TLabel").grid(row=2, column=1, sticky="w", padx=(12, 0))
+        ttk.Label(creator, text="Временный пароль", style="Muted.TLabel").grid(row=2, column=2, sticky="w", padx=(12, 0))
+        author_name = ttk.Entry(creator)
+        author_login = ttk.Entry(creator)
+        author_password = ttk.Entry(creator, show="*")
+        author_name.grid(row=3, column=0, sticky="ew", pady=(4, 0))
+        author_login.grid(row=3, column=1, sticky="ew", padx=(12, 0), pady=(4, 0))
+        author_password.grid(row=3, column=2, sticky="ew", padx=(12, 0), pady=(4, 0))
+        creator.columnconfigure(0, weight=2)
+        creator.columnconfigure(1, weight=1)
+        creator.columnconfigure(2, weight=1)
+
+        def create_author():
+            if not author_name.get().strip() or not author_login.get().strip() or not author_password.get():
+                messagebox.showwarning("Автор", "Укажите имя, логин и временный пароль автора.")
+                return
+            try:
+                self.gateway.create_author(
+                    self.user.user_id,
+                    author_login.get().strip(),
+                    author_password.get(),
+                    author_name.get().strip(),
+                )
+                messagebox.showinfo("Автор", "Учетная запись автора создана. Данные для входа можно передать автору.")
+                self.show_admin()
+            except Exception as exc:
+                self.report_error(exc)
+
+        ttk.Button(creator, text="Создать автора", style="Primary.TButton", command=create_author).grid(
+            row=3, column=3, sticky="e", padx=(16, 0), pady=(4, 0)
+        )
+
+        outer, content = self.panel(tab, padding=15)
+        outer.pack(fill="both", expand=True)
+        ttk.Label(content, text="Пользователи и роли", style="CardTitle.TLabel").pack(anchor="w", pady=(0, 10))
+        tree = ttk.Treeview(content, columns=("login", "name", "role", "active"), show="headings")
+        for name, title, width in (("login", "Логин", 180), ("name", "Имя", 360), ("role", "Роль", 170), ("active", "Активен", 90)):
+            tree.heading(name, text=title)
+            tree.column(name, width=width)
+        tree.pack(fill="both", expand=True)
+        for row in self.gateway.users():
+            role_name = ROLE_NAMES.get(row["role_code"], row["role_code"])
+            active_name = "Да" if row["is_active"] else "Нет"
+            tree.insert("", "end", iid=str(row["user_id"]), values=(row["login"], row["full_name"], role_name, active_name))
+
+        def apply_role(role_code):
+            if not tree.selection():
+                messagebox.showwarning("Роли", "Выберите пользователя в таблице.")
+                return
+            try:
+                self.gateway.set_role(self.user.user_id, int(tree.selection()[0]), role_code)
+                messagebox.showinfo("Роли", "Роль пользователя изменена.")
+                self.show_admin()
+            except Exception as exc:
+                self.report_error(exc)
+
+        actions = ttk.Frame(tab, style="App.TFrame")
+        actions.pack(fill="x", pady=(12, 0))
+        ttk.Button(actions, text="Назначить автором", style="Primary.TButton", command=lambda: apply_role("AUTHOR")).pack(side="left")
+        ttk.Button(actions, text="Сделать участником", style="Quiet.TButton", command=lambda: apply_role("USER")).pack(side="left", padx=(10, 0))
+
+    def destroy(self):
+        self.gateway.close()
+        super().destroy()
+
+
+def run_application():
+    QuizApplication().mainloop()

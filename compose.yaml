@@ -1,0 +1,22 @@
+services:
+  oracle:
+    image: gvenzl/oracle-free:23-slim-faststart
+    container_name: oracle-quiz-db
+    ports:
+      - "1521:1521"
+    environment:
+      ORACLE_PASSWORD: "${ORACLE_SYSTEM_PASSWORD:-OracleSystem2026!}"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    volumes:
+      - oracle_quiz_data:/opt/oracle/oradata
+      - ./docker/init:/container-entrypoint-initdb.d:ro
+      - ./docker:/opt/quiz-project/docker:ro
+      - ./sql:/opt/quiz-project/sql:ro
+
+volumes:
+  oracle_quiz_data:

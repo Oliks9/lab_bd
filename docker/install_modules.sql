@@ -1,0 +1,41 @@
+WHENEVER SQLERROR EXIT SQL.SQLCODE
+SET DEFINE OFF
+SET SERVEROUTPUT ON
+
+PROMPT === Removing previous application objects ===
+@/opt/quiz-project/sql/00_uninstall.sql
+
+PROMPT === Creating tables and indexes ===
+@/opt/quiz-project/sql/01_tables/01_tables.sql
+@/opt/quiz-project/sql/01_tables/02_indexes.sql
+
+PROMPT === Creating standalone functions ===
+@/opt/quiz-project/sql/02_functions/fn_hash_password.sql
+@/opt/quiz-project/sql/02_functions/fn_can_access_quiz.sql
+@/opt/quiz-project/sql/02_functions/fn_attempt_percent.sql
+
+PROMPT === Creating account procedures ===
+@/opt/quiz-project/sql/03_procedures/pr_register_user.sql
+@/opt/quiz-project/sql/03_procedures/pr_login.sql
+
+PROMPT === Creating validation and audit triggers ===
+@/opt/quiz-project/sql/04_triggers/trg_app_users_biu.sql
+@/opt/quiz-project/sql/04_triggers/trg_quizzes_biu.sql
+@/opt/quiz-project/sql/04_triggers/trg_attempts_biu.sql
+@/opt/quiz-project/sql/04_triggers/trg_audit.sql
+
+PROMPT === Creating business packages ===
+@/opt/quiz-project/sql/05_packages/pkg_admin.pks
+@/opt/quiz-project/sql/05_packages/pkg_admin.pkb
+@/opt/quiz-project/sql/05_packages/pkg_testing.pks
+@/opt/quiz-project/sql/05_packages/pkg_testing.pkb
+
+PROMPT === Creating report views ===
+@/opt/quiz-project/sql/06_views/01_views.sql
+
+PROMPT === Loading initial roles, dictionary values, admin and demo quiz ===
+@/opt/quiz-project/sql/07_seed/01_reference_data.sql
+@/opt/quiz-project/sql/07_seed/02_admin_and_demo_quiz.sql
+
+COMMIT;
+PROMPT === Quiz platform installed successfully ===

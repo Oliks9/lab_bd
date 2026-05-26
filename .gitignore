@@ -1,0 +1,9 @@
+.docker-config/
+.env
+.venv/
+__pycache__/
+*.py[cod]
+build/pyinstaller/
+build/OracleQuizPlatform.spec
+build/tcl_runtime/
+dist/
