@@ -131,5 +131,16 @@ CREATE OR REPLACE PACKAGE pkg_admin AS
         p_user_id IN NUMBER,
         p_role_code IN VARCHAR2
     );
+
+    PROCEDURE set_user_password (
+        p_admin_id IN NUMBER,
+        p_user_id IN NUMBER,
+        p_new_password IN VARCHAR2
+    );
+
+    PROCEDURE delete_user (
+        p_admin_id IN NUMBER,
+        p_user_id IN NUMBER
+    );
 END pkg_admin;
 /

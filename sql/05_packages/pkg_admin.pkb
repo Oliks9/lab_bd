@@ -584,5 +584,79 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
             RAISE_APPLICATION_ERROR(-20112, 'Пользователь не найден.');
         END IF;
     END;
+
+    PROCEDURE set_user_password (
+        p_admin_id IN NUMBER,
+        p_user_id IN NUMBER,
+        p_new_password IN VARCHAR2
+    ) IS
+        v_login app_users.login%TYPE;
+    BEGIN
+        require_admin(p_admin_id);
+        IF p_new_password IS NULL OR LENGTH(p_new_password) < 6 THEN
+            RAISE_APPLICATION_ERROR(-20132, 'Password must contain at least 6 characters.');
+        END IF;
+
+        SELECT login
+          INTO v_login
+          FROM app_users
+         WHERE user_id = p_user_id;
+
+        UPDATE app_users
+           SET password_hash = fn_hash_password(v_login, p_new_password),
+               updated_at = SYSTIMESTAMP
+         WHERE user_id = p_user_id;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20112, 'User not found.');
+    END;
+
+    PROCEDURE delete_user (
+        p_admin_id IN NUMBER,
+        p_user_id IN NUMBER
+    ) IS
+        v_role app_users.role_code%TYPE;
+    BEGIN
+        require_admin(p_admin_id);
+        IF p_admin_id = p_user_id THEN
+            RAISE_APPLICATION_ERROR(-20133, 'Cannot delete current admin account.');
+        END IF;
+
+        SELECT role_code
+          INTO v_role
+          FROM app_users
+         WHERE user_id = p_user_id;
+
+        IF v_role = 'ADMIN' THEN
+            RAISE_APPLICATION_ERROR(-20134, 'Cannot delete ADMIN account.');
+        END IF;
+
+        DELETE FROM attempts
+         WHERE quiz_id IN (
+            SELECT quiz_id
+              FROM quizzes
+             WHERE author_id = p_user_id
+         );
+
+        DELETE FROM attempts
+         WHERE user_id = p_user_id;
+
+        DELETE FROM quizzes
+         WHERE author_id = p_user_id;
+
+        UPDATE topics
+           SET created_by = p_admin_id
+         WHERE created_by = p_user_id;
+
+        DELETE FROM app_users
+         WHERE user_id = p_user_id;
+
+        IF SQL%ROWCOUNT = 0 THEN
+            RAISE_APPLICATION_ERROR(-20112, 'User not found.');
+        END IF;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20112, 'User not found.');
+    END;
 END pkg_admin;
 /

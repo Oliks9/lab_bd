@@ -396,6 +396,16 @@ class OracleGateway:
             cursor.callproc("pkg_admin.set_user_role", [admin_id, user_id, role_code])
         self.connection.commit()
 
+    def set_user_password(self, admin_id: int, user_id: int, new_password: str) -> None:
+        with self.connection.cursor() as cursor:
+            cursor.callproc("pkg_admin.set_user_password", [admin_id, user_id, new_password])
+        self.connection.commit()
+
+    def delete_user(self, admin_id: int, user_id: int) -> None:
+        with self.connection.cursor() as cursor:
+            cursor.callproc("pkg_admin.delete_user", [admin_id, user_id])
+        self.connection.commit()
+
     def create_author(self, admin_id: int, login: str, password: str, full_name: str) -> int:
         with self.connection.cursor() as cursor:
             user_id = cursor.var(int)

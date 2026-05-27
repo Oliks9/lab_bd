@@ -2106,21 +2106,72 @@ class QuizApplication(tk.Tk):
             active_name = "Да" if row["is_active"] else "Нет"
             tree.insert("", "end", iid=str(row["user_id"]), values=(row["login"], row["full_name"], role_name, active_name))
 
-        def apply_role(role_code):
+        def selected_user_id():
             if not tree.selection():
-                messagebox.showwarning("Роли", "Выберите пользователя в таблице.")
+                messagebox.showwarning("Пользователи", "Выберите пользователя в таблице.")
+                return None
+            return int(tree.selection()[0])
+
+        def apply_role(role_code):
+            user_id = selected_user_id()
+            if user_id is None:
                 return
             try:
-                self.gateway.set_role(self.user.user_id, int(tree.selection()[0]), role_code)
+                self.gateway.set_role(self.user.user_id, user_id, role_code)
                 messagebox.showinfo("Роли", "Роль пользователя изменена.")
-                self.show_admin()
+                self.show_admin("Команда")
+            except Exception as exc:
+                self.report_error(exc)
+
+        def change_password():
+            user_id = selected_user_id()
+            if user_id is None:
+                return
+            new_password = password_entry.get()
+            if len(new_password) < 6:
+                messagebox.showwarning("Пароль", "Новый пароль должен содержать не менее 6 символов.")
+                return
+            try:
+                self.gateway.set_user_password(self.user.user_id, user_id, new_password)
+                messagebox.showinfo("Пароль", "Пароль пользователя обновлен.")
+                password_entry.delete(0, "end")
+            except Exception as exc:
+                self.report_error(exc)
+
+        def delete_user():
+            user_id = selected_user_id()
+            if user_id is None:
+                return
+            values = tree.item(tree.selection()[0], "values")
+            login = values[0]
+            full_name = values[1]
+            if not messagebox.askyesno(
+                "Удалить пользователя",
+                f"Удалить пользователя «{full_name}» ({login})?\n"
+                "Будут удалены его попытки, а также тесты, созданные этим пользователем.",
+            ):
+                return
+            try:
+                self.gateway.delete_user(self.user.user_id, user_id)
+                messagebox.showinfo("Пользователи", "Пользователь удален.")
+                self.show_admin("Команда")
             except Exception as exc:
                 self.report_error(exc)
 
         actions = ttk.Frame(tab, style="App.TFrame")
         actions.pack(fill="x", pady=(12, 0))
-        ttk.Button(actions, text=self.icon_text("author", "Назначить автором"), style="Primary.TButton", command=lambda: apply_role("AUTHOR")).pack(side="left")
-        ttk.Button(actions, text=self.icon_text("user", "Сделать участником"), style="Quiet.TButton", command=lambda: apply_role("USER")).pack(side="left", padx=(10, 0))
+        role_actions = ttk.Frame(actions, style="App.TFrame")
+        role_actions.pack(side="left")
+        ttk.Button(role_actions, text=self.icon_text("author", "Назначить автором"), style="Primary.TButton", command=lambda: apply_role("AUTHOR")).pack(side="left")
+        ttk.Button(role_actions, text=self.icon_text("user", "Сделать участником"), style="Quiet.TButton", command=lambda: apply_role("USER")).pack(side="left", padx=(10, 0))
+
+        security_actions = ttk.Frame(actions, style="App.TFrame")
+        security_actions.pack(side="right")
+        ttk.Label(security_actions, text="Новый пароль", style="Muted.TLabel").pack(side="left", padx=(0, 8))
+        password_entry = ttk.Entry(security_actions, width=20, show="*")
+        password_entry.pack(side="left")
+        ttk.Button(security_actions, text=self.icon_text("save", "Сменить пароль"), style="Quiet.TButton", command=change_password).pack(side="left", padx=(8, 0))
+        ttk.Button(security_actions, text=self.icon_text("delete", "Удалить пользователя"), style="Danger.TButton", command=delete_user).pack(side="left", padx=(8, 0))
 
     def destroy(self):
         self.gateway.close()
