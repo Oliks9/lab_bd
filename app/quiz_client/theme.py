@@ -3,19 +3,21 @@ from tkinter import ttk
 
 
 COLORS = {
-    "bg": "#f6f8fc",
+    "bg": "#f5f7fa",
     "panel": "#ffffff",
-    "panel_alt": "#eff4fb",
-    "ink": "#101828",
-    "muted": "#667085",
-    "line": "#e4e7ec",
-    "green": "#2563eb",
-    "green_dark": "#1d4ed8",
-    "gold": "#d97706",
-    "red": "#dc2626",
-    "success": "#ecfdf3",
-    "warning": "#fff7ed",
-    "blue_soft": "#eff6ff",
+    "panel_alt": "#edf2f8",
+    "ink": "#1f2937",
+    "muted": "#5f6b7a",
+    "line": "#d8dee8",
+    "green": "#1177d1",
+    "green_dark": "#0f67b4",
+    "gold": "#f98012",
+    "red": "#c9403a",
+    "success": "#eaf7ef",
+    "warning": "#fff3e6",
+    "blue_soft": "#e9f2ff",
+    "brand": "#0f6cbf",
+    "brand_dark": "#0c5ea7",
 }
 
 
@@ -30,23 +32,26 @@ def configure_theme(root: tk.Tk) -> ttk.Style:
     style.configure("App.TFrame", background=COLORS["bg"])
     style.configure("Panel.TFrame", background=COLORS["panel"])
     style.configure("Muted.TLabel", background=COLORS["panel"], foreground=COLORS["muted"])
-    style.configure("PageTitle.TLabel", background=COLORS["bg"], foreground=COLORS["ink"], font=("Segoe UI", 24, "bold"))
-    style.configure("Subtitle.TLabel", background=COLORS["bg"], foreground=COLORS["muted"], font=("Segoe UI", 10))
-    style.configure("CardTitle.TLabel", background=COLORS["panel"], foreground=COLORS["ink"], font=("Segoe UI", 14, "bold"))
+    style.configure("PageTitle.TLabel", background=COLORS["panel"], foreground=COLORS["ink"], font=("Segoe UI", 22, "bold"))
+    style.configure("Subtitle.TLabel", background=COLORS["panel"], foreground=COLORS["muted"], font=("Segoe UI", 10))
+    style.configure("CardTitle.TLabel", background=COLORS["panel"], foreground=COLORS["ink"], font=("Segoe UI", 13, "bold"))
     style.configure("Card.TLabel", background=COLORS["panel"], foreground=COLORS["ink"], font=("Segoe UI", 10))
-    style.configure("Primary.TButton", background=COLORS["green"], foreground="#ffffff", font=("Segoe UI", 10, "bold"), borderwidth=0, padding=(17, 10))
-    style.map("Primary.TButton", background=[("active", COLORS["green_dark"]), ("disabled", "#b2c5f4")])
-    style.configure("Quiet.TButton", background=COLORS["panel_alt"], foreground=COLORS["ink"], borderwidth=0, padding=(13, 9))
-    style.configure("Danger.TButton", background="#fef2f2", foreground=COLORS["red"], borderwidth=0, padding=(13, 9))
-    style.map("Danger.TButton", background=[("active", "#fee2e2")])
-    style.configure("Nav.TButton", background=COLORS["bg"], foreground=COLORS["muted"], borderwidth=0, padding=(12, 9))
-    style.map("Nav.TButton", foreground=[("active", COLORS["green"])], background=[("active", COLORS["panel_alt"])])
-    style.configure("TEntry", fieldbackground="#ffffff", padding=7)
+    style.configure("Primary.TButton", background=COLORS["brand"], foreground="#ffffff", font=("Segoe UI", 10, "bold"), borderwidth=0, padding=(16, 10))
+    style.map("Primary.TButton", background=[("active", COLORS["brand_dark"]), ("disabled", "#9fbfdf")])
+    style.configure("Quiet.TButton", background=COLORS["panel_alt"], foreground=COLORS["ink"], borderwidth=0, padding=(12, 9))
+    style.map("Quiet.TButton", background=[("active", COLORS["blue_soft"])])
+    style.configure("Danger.TButton", background="#fdeeee", foreground=COLORS["red"], borderwidth=0, padding=(12, 9))
+    style.map("Danger.TButton", background=[("active", "#f9dfdf")])
+    style.configure("Nav.TButton", background=COLORS["panel"], foreground=COLORS["muted"], borderwidth=0, padding=(12, 8))
+    style.map("Nav.TButton", foreground=[("active", COLORS["brand"])], background=[("active", COLORS["blue_soft"])])
+    style.configure("TEntry", fieldbackground="#ffffff", padding=7, bordercolor=COLORS["line"], lightcolor=COLORS["line"], darkcolor=COLORS["line"])
     style.configure("TCombobox", fieldbackground="#ffffff", padding=5)
-    style.configure("Treeview", background=COLORS["panel"], fieldbackground=COLORS["panel"], borderwidth=0, rowheight=38)
-    style.configure("Treeview.Heading", background=COLORS["panel_alt"], foreground=COLORS["muted"], relief="flat", font=("Segoe UI", 9, "bold"))
+    style.map("TCombobox", fieldbackground=[("readonly", "#ffffff")], selectbackground=[("readonly", "#ffffff")])
+    style.configure("Treeview", background=COLORS["panel"], fieldbackground=COLORS["panel"], borderwidth=0, rowheight=36)
+    style.map("Treeview", background=[("selected", COLORS["blue_soft"])], foreground=[("selected", COLORS["ink"])])
+    style.configure("Treeview.Heading", background=COLORS["blue_soft"], foreground=COLORS["muted"], relief="flat", font=("Segoe UI", 9, "bold"))
     style.configure("TNotebook", background=COLORS["bg"], borderwidth=0)
-    style.configure("TNotebook.Tab", background=COLORS["panel_alt"], foreground=COLORS["muted"], padding=(17, 11))
-    style.map("TNotebook.Tab", background=[("selected", COLORS["panel"])], foreground=[("selected", COLORS["green"])])
-    style.configure("Horizontal.TProgressbar", troughcolor=COLORS["panel_alt"], background=COLORS["green"])
+    style.configure("TNotebook.Tab", background=COLORS["panel_alt"], foreground=COLORS["muted"], padding=(16, 10))
+    style.map("TNotebook.Tab", background=[("selected", COLORS["brand"])], foreground=[("selected", "#ffffff")])
+    style.configure("Horizontal.TProgressbar", troughcolor=COLORS["panel_alt"], background=COLORS["brand"])
     return style

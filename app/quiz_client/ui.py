@@ -55,20 +55,47 @@ class QuizApplication(tk.Tk):
 
     def panel(self, parent, padding=20):
         outer = tk.Frame(parent, bg=COLORS["panel"], highlightthickness=1, highlightbackground=COLORS["line"])
+        accent = tk.Frame(outer, bg=COLORS["brand"], height=3)
+        accent.pack(fill="x")
         inner = ttk.Frame(outer, style="Panel.TFrame", padding=padding)
         inner.pack(fill="both", expand=True)
         return outer, inner
 
     def heading(self, title, subtitle="", with_navigation=True):
-        header = ttk.Frame(self.page, style="App.TFrame")
-        header.pack(fill="x", pady=(0, 20))
-        left = ttk.Frame(header, style="App.TFrame")
+        shell = tk.Frame(self.page, bg=COLORS["panel"], highlightthickness=1, highlightbackground=COLORS["line"])
+        shell.pack(fill="x", pady=(0, 20))
+        topbar = tk.Frame(shell, bg=COLORS["brand"], height=40)
+        topbar.pack(fill="x")
+        tk.Label(
+            topbar,
+            text="Oracle Quiz LMS",
+            bg=COLORS["brand"],
+            fg="#ffffff",
+            font=("Segoe UI", 10, "bold"),
+            padx=14,
+            pady=8,
+        ).pack(side="left")
+        if self.user:
+            role_name = ROLE_NAMES.get(self.user.role_code, self.user.role_code)
+            tk.Label(
+                topbar,
+                text=f"{self.user.full_name} · {role_name}",
+                bg=COLORS["brand"],
+                fg="#ffffff",
+                font=("Segoe UI", 9),
+                padx=14,
+                pady=8,
+            ).pack(side="right")
+
+        header = ttk.Frame(shell, style="Panel.TFrame", padding=(16, 14))
+        header.pack(fill="x")
+        left = ttk.Frame(header, style="Panel.TFrame")
         left.pack(side="left", fill="x", expand=True)
         ttk.Label(left, text=title, style="PageTitle.TLabel").pack(anchor="w")
         if subtitle:
             ttk.Label(left, text=subtitle, style="Subtitle.TLabel").pack(anchor="w", pady=(5, 0))
         if with_navigation and self.user:
-            nav = ttk.Frame(header, style="App.TFrame")
+            nav = ttk.Frame(header, style="Panel.TFrame")
             nav.pack(side="right", anchor="n")
             ttk.Button(nav, text="Каталог", style="Nav.TButton", command=self.show_catalog).pack(side="left", padx=3)
             ttk.Button(nav, text="Мои результаты", style="Nav.TButton", command=self.show_history).pack(side="left", padx=3)
