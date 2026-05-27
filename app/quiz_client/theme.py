@@ -49,8 +49,14 @@ def configure_theme(root: tk.Tk) -> ttk.Style:
     style.configure("Nav.TButton", background=COLORS["panel"], foreground=COLORS["muted"], borderwidth=0, padding=(12, 8))
     style.map("Nav.TButton", foreground=[("active", COLORS["brand"])], background=[("active", COLORS["blue_soft"])])
     style.configure("TEntry", fieldbackground="#ffffff", padding=7, bordercolor=COLORS["line"], lightcolor=COLORS["line"], darkcolor=COLORS["line"])
-    style.configure("TCombobox", fieldbackground="#ffffff", padding=5)
-    style.map("TCombobox", fieldbackground=[("readonly", "#ffffff")], selectbackground=[("readonly", "#ffffff")])
+    style.configure("TCombobox", fieldbackground="#ffffff", foreground=COLORS["ink"], padding=5)
+    style.map(
+        "TCombobox",
+        fieldbackground=[("readonly", "#ffffff")],
+        selectbackground=[("readonly", "#ffffff")],
+        foreground=[("readonly", COLORS["ink"])],
+        selectforeground=[("readonly", COLORS["ink"])],
+    )
     style.configure("Treeview", background=COLORS["panel"], fieldbackground=COLORS["panel"], borderwidth=0, rowheight=36)
     style.map("Treeview", background=[("selected", COLORS["blue_soft"])], foreground=[("selected", COLORS["ink"])])
     style.configure("Treeview.Heading", background=COLORS["blue_soft"], foreground=COLORS["muted"], relief="flat", font=("Segoe UI", 9, "bold"))

@@ -1695,11 +1695,11 @@ class QuizApplication(tk.Tk):
         outer.pack(fill="both", expand=True)
         ttk.Label(content, text="Управление тестами", style="CardTitle.TLabel").pack(anchor="w")
         ttk.Label(content, text="Публикуйте готовые черновики и выдавайте доступ к закрытым тестам.", style="Muted.TLabel").pack(anchor="w", pady=(3, 12))
-        tree = ttk.Treeview(content, columns=("topic", "title", "access", "status"), show="headings")
+        tree = ttk.Treeview(content, columns=("topic", "title", "access", "status"), show="headings", height=9)
         for name, title, width in (("topic", "Тематика", 250), ("title", "Тест", 390), ("access", "Доступ", 130), ("status", "Статус", 130)):
             tree.heading(name, text=title)
             tree.column(name, width=width)
-        tree.pack(fill="both", expand=True)
+        tree.pack(fill="x")
         quizzes = self.gateway.admin_quizzes(self.user)
         quiz_map = {row["quiz_id"]: row for row in quizzes}
         for row in quizzes:
@@ -1711,6 +1711,8 @@ class QuizApplication(tk.Tk):
         settings_outer, settings = self.panel(tab, padding=12)
         settings_outer.pack(fill="x", pady=(10, 0))
         ttk.Label(settings, text="Настройки выбранного теста", style="CardTitle.TLabel").pack(anchor="w")
+        state_actions = ttk.Frame(settings, style="Panel.TFrame")
+        state_actions.pack(fill="x", pady=(8, 0))
         feedback_var = tk.BooleanVar(value=True)
         feedback_toggle = ttk.Checkbutton(
             settings,
@@ -1841,14 +1843,10 @@ class QuizApplication(tk.Tk):
             except Exception as exc:
                 self.report_error(exc)
 
-        actions = ttk.Frame(settings, style="Panel.TFrame")
-        actions.pack(fill="x", pady=(12, 0))
-        state_row = ttk.Frame(actions, style="Panel.TFrame")
-        state_row.pack(fill="x")
-        ttk.Button(state_row, text=self.icon_text("publish", "Опубликовать выбранный тест"), style="Primary.TButton", command=publish).pack(side="left")
+        ttk.Button(state_actions, text=self.icon_text("publish", "Опубликовать выбранный тест"), style="Primary.TButton", command=publish).pack(side="left")
         restricted = [row for row in quizzes if row["access_mode"] == "RESTRICTED"]
         users = self.gateway.users()
-        access_row = ttk.Frame(actions, style="Panel.TFrame")
+        access_row = ttk.Frame(settings, style="Panel.TFrame")
         access_row.pack(fill="x", pady=(10, 0))
         access_quiz = ttk.Combobox(access_row, values=[f"{row['quiz_id']} | {row['title']}" for row in restricted], state="readonly", width=29)
         access_user = ttk.Combobox(access_row, values=[f"{row['user_id']} | {row['login']}" for row in users], state="readonly", width=24)
@@ -1908,8 +1906,8 @@ class QuizApplication(tk.Tk):
                 self.report_error(exc)
 
         if self.user.role_code in ("ADMIN", "AUTHOR"):
-            ttk.Button(state_row, text=self.icon_text("hide", "Скрыть в черновик"), style="Quiet.TButton", command=archive_quiz).pack(side="left", padx=(9, 0))
-            ttk.Button(state_row, text=self.icon_text("delete", "Удалить тест"), style="Danger.TButton", command=delete_quiz).pack(side="left", padx=(9, 0))
+            ttk.Button(state_actions, text=self.icon_text("hide", "Скрыть в черновик"), style="Quiet.TButton", command=archive_quiz).pack(side="left", padx=(9, 0))
+            ttk.Button(state_actions, text=self.icon_text("delete", "Удалить тест"), style="Danger.TButton", command=delete_quiz).pack(side="left", padx=(9, 0))
         tree.bind("<<TreeviewSelect>>", refresh_feedback_controls)
         refresh_feedback_controls()
 
