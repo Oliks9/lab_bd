@@ -1056,12 +1056,14 @@ class QuizApplication(tk.Tk):
             ("Верно", f"{result['correct_count']} / {result['question_count']}"),
             ("Статус", result["status"]),
         ]
+        stats_grid = ttk.Frame(summary, style="Panel.TFrame")
+        stats_grid.pack(fill="x", pady=(SPACING["sm"], 0))
         for index, (title, value) in enumerate(cells):
-            frame = ttk.Frame(summary, style="Panel.TFrame")
-            frame.grid(row=1, column=index, sticky="ew", padx=(0 if index == 0 else 18, 0), pady=(SPACING["sm"], 0))
+            frame = ttk.Frame(stats_grid, style="Panel.TFrame")
+            frame.grid(row=0, column=index, sticky="ew", padx=(0 if index == 0 else 18, 0))
             ttk.Label(frame, text=title, style="Muted.TLabel").pack(anchor="w")
             ttk.Label(frame, text=str(value), style="CardTitle.TLabel").pack(anchor="w", pady=(5, 0))
-            summary.columnconfigure(index, weight=1)
+            stats_grid.columnconfigure(index, weight=1)
 
         outer, body = self.panel(self.page, padding=15)
         outer.pack(fill="both", expand=True)
