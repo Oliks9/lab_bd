@@ -3,6 +3,7 @@ DECLARE
     v_admin_id NUMBER;
     v_name VARCHAR2(200);
     v_role VARCHAR2(20);
+    v_login VARCHAR2(50);
     v_quiz_id NUMBER;
     v_attempt_id NUMBER;
     v_question_id NUMBER;
@@ -10,8 +11,14 @@ DECLARE
     v_score NUMBER;
 BEGIN
     SAVEPOINT before_testing_smoke_test;
-    pr_login('admin', 'Admin123!', v_admin_id, v_name, v_role);
-    SELECT quiz_id INTO v_quiz_id FROM quizzes WHERE title = 'Oracle: основы серверной логики';
+    v_login := 'smoke_player_' || TO_CHAR(TRUNC(DBMS_RANDOM.VALUE(1000, 9999)));
+    pr_register_user(v_login, 'Smoke123!', 'Smoke Player', v_admin_id);
+    SELECT quiz_id
+      INTO v_quiz_id
+      FROM quizzes
+     WHERE status = 'PUBLISHED'
+       AND access_mode = 'PUBLIC'
+       AND ROWNUM = 1;
     pkg_testing.start_attempt(v_admin_id, v_quiz_id, v_attempt_id);
 
     SELECT q.question_id, TO_CHAR(qo.option_id)

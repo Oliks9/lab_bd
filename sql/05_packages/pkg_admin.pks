@@ -138,6 +138,12 @@ CREATE OR REPLACE PACKAGE pkg_admin AS
         p_new_password IN VARCHAR2
     );
 
+    PROCEDURE set_user_active (
+        p_admin_id IN NUMBER,
+        p_user_id IN NUMBER,
+        p_is_active IN NUMBER
+    );
+
     PROCEDURE delete_user (
         p_admin_id IN NUMBER,
         p_user_id IN NUMBER

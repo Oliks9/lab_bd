@@ -25,10 +25,10 @@ PROMPT === Creating validation and audit triggers ===
 @@04_triggers/trg_audit.sql
 
 PROMPT === Creating business packages ===
-@@05_packages/pkg_admin.pks
-@@05_packages/pkg_admin.pkb
 @@05_packages/pkg_testing.pks
 @@05_packages/pkg_testing.pkb
+@@05_packages/pkg_admin.pks
+@@05_packages/pkg_admin.pkb
 
 PROMPT === Creating report views ===
 @@06_views/01_views.sql

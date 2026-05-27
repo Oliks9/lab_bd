@@ -43,7 +43,11 @@ class OracleGateway:
             full_name = cursor.var(str, size=200)
             role = cursor.var(str, size=20)
             cursor.callproc("pr_login", [login, password, user_id, full_name, role])
-        return SessionUser(int(user_id.getvalue()), full_name.getvalue(), role.getvalue())
+            resolved_user_id = int(user_id.getvalue())
+            # On each new session, expire unfinished attempts left from interrupted app runs.
+            cursor.callproc("pkg_testing.abandon_user_attempts", [resolved_user_id])
+        self.connection.commit()
+        return SessionUser(resolved_user_id, full_name.getvalue(), role.getvalue())
 
     def register(self, login: str, password: str, full_name: str) -> int:
         with self.connection.cursor() as cursor:
@@ -147,6 +151,16 @@ class OracleGateway:
     def finish_attempt(self, attempt_id: int) -> None:
         with self.connection.cursor() as cursor:
             cursor.callproc("pkg_testing.finish_attempt", [attempt_id])
+        self.connection.commit()
+
+    def abandon_attempt(self, attempt_id: int) -> None:
+        with self.connection.cursor() as cursor:
+            cursor.callproc("pkg_testing.abandon_attempt", [attempt_id])
+        self.connection.commit()
+
+    def abandon_user_attempts(self, user_id: int) -> None:
+        with self.connection.cursor() as cursor:
+            cursor.callproc("pkg_testing.abandon_user_attempts", [user_id])
         self.connection.commit()
 
     def attempt_result(self, attempt_id: int):
@@ -399,6 +413,11 @@ class OracleGateway:
     def set_user_password(self, admin_id: int, user_id: int, new_password: str) -> None:
         with self.connection.cursor() as cursor:
             cursor.callproc("pkg_admin.set_user_password", [admin_id, user_id, new_password])
+        self.connection.commit()
+
+    def set_user_active(self, admin_id: int, user_id: int, is_active: int) -> None:
+        with self.connection.cursor() as cursor:
+            cursor.callproc("pkg_admin.set_user_active", [admin_id, user_id, is_active])
         self.connection.commit()
 
     def delete_user(self, admin_id: int, user_id: int) -> None:

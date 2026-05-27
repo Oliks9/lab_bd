@@ -54,6 +54,8 @@ ACTION_ICONS = {
     "shuffle": "⇅",
     "author": "✦",
     "user": "•",
+    "disable": "⛔",
+    "enable": "✓",
 }
 
 
@@ -391,9 +393,24 @@ class QuizApplication(tk.Tk):
         full_name.focus_set()
         self.set_enter_action(register_user)
 
-    def logout(self):
-        self.user = None
+    def abandon_active_attempt(self):
+        if self.active_attempt_id is None:
+            return
+        attempt_id = self.active_attempt_id
         self.active_attempt_id = None
+        self.active_questions = []
+        self.active_index = 0
+        self.active_header = None
+        self.cancel_timer()
+        try:
+            self.gateway.abandon_attempt(attempt_id)
+        except Exception:
+            # Ignore transport errors during app shutdown/logout.
+            pass
+
+    def logout(self):
+        self.abandon_active_attempt()
+        self.user = None
         self.show_login_page()
 
     def show_catalog(self):
@@ -2101,9 +2118,12 @@ class QuizApplication(tk.Tk):
             tree.heading(name, text=title)
             tree.column(name, width=width)
         tree.pack(fill="both", expand=True)
+        user_active_flags = {}
         for row in self.gateway.users():
             role_name = ROLE_NAMES.get(row["role_code"], row["role_code"])
-            active_name = "Да" if row["is_active"] else "Нет"
+            is_active = int(row["is_active"] or 0)
+            user_active_flags[int(row["user_id"])] = is_active
+            active_name = "Да" if is_active else "Нет"
             tree.insert("", "end", iid=str(row["user_id"]), values=(row["login"], row["full_name"], role_name, active_name))
 
         def selected_user_id():
@@ -2111,6 +2131,12 @@ class QuizApplication(tk.Tk):
                 messagebox.showwarning("Пользователи", "Выберите пользователя в таблице.")
                 return None
             return int(tree.selection()[0])
+
+        def selected_user_active():
+            user_id = selected_user_id()
+            if user_id is None:
+                return None
+            return user_active_flags.get(user_id, 0)
 
         def apply_role(role_code):
             user_id = selected_user_id()
@@ -2135,6 +2161,33 @@ class QuizApplication(tk.Tk):
                 self.gateway.set_user_password(self.user.user_id, user_id, new_password)
                 messagebox.showinfo("Пароль", "Пароль пользователя обновлен.")
                 password_entry.delete(0, "end")
+            except Exception as exc:
+                self.report_error(exc)
+
+        def set_user_active(is_active: int):
+            user_id = selected_user_id()
+            if user_id is None:
+                return
+            current_state = selected_user_active()
+            if current_state is None:
+                return
+            if current_state == is_active:
+                state_label = "активен" if is_active == 1 else "уже отключен"
+                messagebox.showwarning("Пользователь", f"Выбранный аккаунт {state_label}.")
+                return
+            values = tree.item(tree.selection()[0], "values")
+            login = values[0]
+            full_name = values[1]
+            action_text = "включить" if is_active == 1 else "отключить"
+            if not messagebox.askyesno(
+                "Изменение активности",
+                f"Вы действительно хотите {action_text} аккаунт «{full_name}» ({login})?",
+            ):
+                return
+            try:
+                self.gateway.set_user_active(self.user.user_id, user_id, is_active)
+                messagebox.showinfo("Пользователи", "Статус активности пользователя обновлен.")
+                self.show_admin("Команда")
             except Exception as exc:
                 self.report_error(exc)
 
@@ -2171,9 +2224,22 @@ class QuizApplication(tk.Tk):
         password_entry = ttk.Entry(security_actions, width=20, show="*")
         password_entry.pack(side="left")
         ttk.Button(security_actions, text=self.icon_text("save", "Сменить пароль"), style="Quiet.TButton", command=change_password).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            security_actions,
+            text=self.icon_text("disable", "Отключить"),
+            style="Quiet.TButton",
+            command=lambda: set_user_active(0),
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            security_actions,
+            text=self.icon_text("enable", "Включить"),
+            style="Quiet.TButton",
+            command=lambda: set_user_active(1),
+        ).pack(side="left", padx=(8, 0))
         ttk.Button(security_actions, text=self.icon_text("delete", "Удалить пользователя"), style="Danger.TButton", command=delete_user).pack(side="left", padx=(8, 0))
 
     def destroy(self):
+        self.abandon_active_attempt()
         self.gateway.close()
         super().destroy()
 

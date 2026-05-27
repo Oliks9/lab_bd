@@ -611,6 +611,47 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
             RAISE_APPLICATION_ERROR(-20112, 'User not found.');
     END;
 
+    PROCEDURE set_user_active (
+        p_admin_id IN NUMBER,
+        p_user_id IN NUMBER,
+        p_is_active IN NUMBER
+    ) IS
+        v_role app_users.role_code%TYPE;
+    BEGIN
+        require_admin(p_admin_id);
+        IF p_is_active NOT IN (0, 1) THEN
+            RAISE_APPLICATION_ERROR(-20135, 'Active flag must be 0 or 1.');
+        END IF;
+        IF p_admin_id = p_user_id AND p_is_active = 0 THEN
+            RAISE_APPLICATION_ERROR(-20136, 'Cannot deactivate current admin account.');
+        END IF;
+
+        SELECT role_code
+          INTO v_role
+          FROM app_users
+         WHERE user_id = p_user_id;
+
+        IF v_role = 'ADMIN' AND p_is_active = 0 THEN
+            RAISE_APPLICATION_ERROR(-20137, 'Cannot deactivate ADMIN account.');
+        END IF;
+
+        IF p_is_active = 0 THEN
+            pkg_testing.abandon_user_attempts(p_user_id);
+        END IF;
+
+        UPDATE app_users
+           SET is_active = p_is_active,
+               updated_at = SYSTIMESTAMP
+         WHERE user_id = p_user_id;
+
+        IF SQL%ROWCOUNT = 0 THEN
+            RAISE_APPLICATION_ERROR(-20112, 'User not found.');
+        END IF;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20112, 'User not found.');
+    END;
+
     PROCEDURE delete_user (
         p_admin_id IN NUMBER,
         p_user_id IN NUMBER

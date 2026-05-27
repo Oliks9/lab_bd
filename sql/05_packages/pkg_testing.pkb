@@ -36,7 +36,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
         v_count NUMBER;
     BEGIN
         IF fn_can_access_quiz(p_user_id, p_quiz_id) = 0 THEN
-            RAISE_APPLICATION_ERROR(-20200, 'Тест недоступен или еще не опубликован.');
+            RAISE_APPLICATION_ERROR(-20200, 'Quiz is unavailable or not published.');
         END IF;
 
         SELECT duration_minutes, question_limit, timer_mode, attempt_limit
@@ -51,7 +51,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
              WHERE user_id = p_user_id
                AND quiz_id = p_quiz_id;
             IF v_user_attempt_count >= v_attempt_limit THEN
-                RAISE_APPLICATION_ERROR(-20211, 'Лимит попыток для этого теста исчерпан.');
+                RAISE_APPLICATION_ERROR(-20211, 'Attempt limit for this quiz has been reached.');
             END IF;
         END IF;
 
@@ -89,7 +89,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
 
         SELECT COUNT(*) INTO v_count FROM attempt_questions WHERE attempt_id = p_attempt_id;
         IF v_count = 0 THEN
-            RAISE_APPLICATION_ERROR(-20201, 'В опубликованном тесте отсутствуют вопросы.');
+            RAISE_APPLICATION_ERROR(-20201, 'Published quiz has no questions.');
         END IF;
     END;
 
@@ -150,19 +150,19 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
          FOR UPDATE OF a.status, a.active_question_order, a.question_started_at;
 
         IF v_status <> 'IN_PROGRESS' THEN
-            RAISE_APPLICATION_ERROR(-20202, 'Попытка уже завершена.');
+            RAISE_APPLICATION_ERROR(-20202, 'Attempt is already finished.');
         END IF;
 
         IF v_timer_mode = 'QUIZ' THEN
             IF v_deadline IS NOT NULL AND SYSTIMESTAMP > v_deadline THEN
-                RAISE_APPLICATION_ERROR(-20203, 'Время прохождения теста истекло. Попытка будет завершена.');
+                RAISE_APPLICATION_ERROR(-20203, 'Time limit has expired.');
             END IF;
         ELSE
             IF v_active_order IS NULL THEN
-                RAISE_APPLICATION_ERROR(-20202, 'Попытка уже завершена.');
+                RAISE_APPLICATION_ERROR(-20202, 'Attempt is already finished.');
             END IF;
             IF v_display_order <> v_active_order THEN
-                RAISE_APPLICATION_ERROR(-20208, 'Отвечайте на вопросы по порядку.');
+                RAISE_APPLICATION_ERROR(-20208, 'Answer questions in order.');
             END IF;
             IF v_question_duration IS NULL THEN
                 v_question_duration := 1;
@@ -174,7 +174,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
                  WHERE attempt_id = p_attempt_id;
             END IF;
             IF SYSTIMESTAMP > v_question_started + NUMTODSINTERVAL(v_question_duration, 'MINUTE') THEN
-                RAISE_APPLICATION_ERROR(-20203, 'Время на текущий вопрос истекло. Попытка будет завершена.');
+                RAISE_APPLICATION_ERROR(-20203, 'Time limit has expired.');
             END IF;
         END IF;
 
@@ -194,7 +194,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
 
         IF v_type IN ('SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'BOOLEAN', 'ORDERING') THEN
             IF v_clean_ids IS NULL OR NOT REGEXP_LIKE(v_clean_ids, '^[0-9]+(,[0-9]+)*$') THEN
-                RAISE_APPLICATION_ERROR(-20204, 'Выберите допустимый вариант ответа.');
+                RAISE_APPLICATION_ERROR(-20204, 'Select a valid answer option.');
             END IF;
 
             v_token_count := REGEXP_COUNT(v_clean_ids, '[^,]+');
@@ -206,7 +206,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
             v_selected_count := SQL%ROWCOUNT;
 
             IF v_selected_count <> v_token_count OR (v_type IN ('SINGLE_CHOICE', 'BOOLEAN') AND v_selected_count <> 1) THEN
-                RAISE_APPLICATION_ERROR(-20205, 'Выбран некорректный набор вариантов.');
+                RAISE_APPLICATION_ERROR(-20205, 'Selected options are invalid.');
             END IF;
 
             IF v_type = 'ORDERING' THEN
@@ -215,10 +215,10 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
                   FROM question_options
                  WHERE question_id = p_question_id;
                 IF v_total_option_count < 2 THEN
-                    RAISE_APPLICATION_ERROR(-20209, 'Для этого вопроса не настроена корректная последовательность.');
+                    RAISE_APPLICATION_ERROR(-20209, 'Ordering question is not configured correctly.');
                 END IF;
                 IF v_selected_count <> v_total_option_count THEN
-                    RAISE_APPLICATION_ERROR(-20205, 'Укажите полный порядок из всех элементов.');
+                    RAISE_APPLICATION_ERROR(-20205, 'Selected options are invalid.');
                 END IF;
 
                 SELECT LISTAGG(TO_CHAR(option_id), ',') WITHIN GROUP (ORDER BY seq_no)
@@ -270,7 +270,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
         END IF;
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
-            RAISE_APPLICATION_ERROR(-20206, 'Вопрос не входит в текущую попытку.');
+            RAISE_APPLICATION_ERROR(-20206, 'Question is not part of this attempt.');
     END;
 
     PROCEDURE expire_question (
@@ -290,7 +290,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
             RETURN;
         END IF;
         IF v_timer_mode <> 'QUESTION' THEN
-            RAISE_APPLICATION_ERROR(-20210, 'Автопереход доступен только в режиме таймера по вопросам.');
+            RAISE_APPLICATION_ERROR(-20210, 'Auto-advance is available only in QUESTION timer mode.');
         END IF;
         IF v_active_order IS NULL THEN
             RETURN;
@@ -299,7 +299,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
         advance_active_question(p_attempt_id, v_active_order);
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
-            RAISE_APPLICATION_ERROR(-20207, 'Попытка не найдена.');
+            RAISE_APPLICATION_ERROR(-20207, 'Attempt not found.');
     END;
 
     PROCEDURE finish_attempt (
@@ -353,7 +353,36 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
          WHERE attempt_id = p_attempt_id;
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
-            RAISE_APPLICATION_ERROR(-20207, 'Попытка не найдена.');
+            RAISE_APPLICATION_ERROR(-20207, 'Attempt not found.');
+    END;
+
+    PROCEDURE abandon_attempt (
+        p_attempt_id IN NUMBER
+    ) IS
+    BEGIN
+        finish_attempt(p_attempt_id);
+        UPDATE attempts
+           SET status = 'EXPIRED'
+         WHERE attempt_id = p_attempt_id
+           AND status = 'FINISHED';
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20207, 'Attempt not found.');
+    END;
+
+    PROCEDURE abandon_user_attempts (
+        p_user_id IN NUMBER
+    ) IS
+    BEGIN
+        FOR rec IN (
+            SELECT attempt_id
+              FROM attempts
+             WHERE user_id = p_user_id
+               AND status = 'IN_PROGRESS'
+        ) LOOP
+            abandon_attempt(rec.attempt_id);
+        END LOOP;
     END;
 END pkg_testing;
 /
+

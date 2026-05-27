@@ -15,8 +15,19 @@ DECLARE
 BEGIN
     SAVEPOINT before_content_management_test;
 
-    pr_login('admin', 'Admin123!', v_admin_id, v_name, v_role);
+    SELECT user_id INTO v_admin_id FROM app_users WHERE role_code = 'ADMIN' AND is_active = 1 AND ROWNUM = 1;
     pkg_admin.create_author(v_admin_id, 'smoke_editor', 'Editor123!', 'Smoke Editor', v_author_id);
+    pkg_admin.set_user_active(v_admin_id, v_author_id, 0);
+    BEGIN
+        pkg_admin.create_topic(v_author_id, 'Blocked topic', 'Should fail for inactive author', v_topic_id);
+        RAISE_APPLICATION_ERROR(-20983, 'Inactive author was able to create content.');
+    EXCEPTION
+        WHEN OTHERS THEN
+            IF SQLCODE != -20100 THEN
+                RAISE;
+            END IF;
+    END;
+    pkg_admin.set_user_active(v_admin_id, v_author_id, 1);
     pkg_admin.create_topic(v_author_id, 'Smoke content topic', 'Temporary author material', v_topic_id);
     pkg_admin.create_category(v_author_id, v_topic_id, 'Author category', v_category_id);
 
@@ -90,8 +101,16 @@ BEGIN
     pkg_admin.delete_category(v_admin_id, v_category_id);
     pkg_admin.delete_topic(v_admin_id, v_topic_id);
 
-    SELECT quiz_id INTO v_demo_quiz_id FROM quizzes WHERE title = 'Oracle: основы серверной логики';
+    SELECT quiz_id INTO v_demo_quiz_id FROM quizzes WHERE status = 'PUBLISHED' AND ROWNUM = 1;
     pkg_testing.start_attempt(v_author_id, v_demo_quiz_id, v_attempt_id);
+    pkg_testing.abandon_user_attempts(v_author_id);
+    SELECT COUNT(*) INTO v_count
+      FROM attempts
+     WHERE attempt_id = v_attempt_id
+       AND status = 'EXPIRED';
+    IF v_count <> 1 THEN
+        RAISE_APPLICATION_ERROR(-20984, 'Abandoning active attempts did not mark attempt as EXPIRED.');
+    END IF;
     pkg_admin.reset_user_quiz_attempts(v_admin_id, v_author_id, v_demo_quiz_id);
     SELECT COUNT(*) INTO v_count FROM attempts WHERE user_id = v_author_id AND quiz_id = v_demo_quiz_id;
     IF v_count <> 0 THEN
@@ -109,3 +128,4 @@ BEGIN
     ROLLBACK TO before_content_management_test;
 END;
 /
+

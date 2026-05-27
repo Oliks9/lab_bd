@@ -19,5 +19,13 @@ CREATE OR REPLACE PACKAGE pkg_testing AS
     PROCEDURE finish_attempt (
         p_attempt_id IN NUMBER
     );
+
+    PROCEDURE abandon_attempt (
+        p_attempt_id IN NUMBER
+    );
+
+    PROCEDURE abandon_user_attempts (
+        p_user_id IN NUMBER
+    );
 END pkg_testing;
 /

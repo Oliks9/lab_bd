@@ -18,10 +18,10 @@ PROMPT === Recompiling PL/SQL application modules without deleting data ===
 @/opt/quiz-project/sql/04_triggers/trg_quizzes_biu.sql
 @/opt/quiz-project/sql/04_triggers/trg_attempts_biu.sql
 @/opt/quiz-project/sql/04_triggers/trg_audit.sql
-@/opt/quiz-project/sql/05_packages/pkg_admin.pks
-@/opt/quiz-project/sql/05_packages/pkg_admin.pkb
 @/opt/quiz-project/sql/05_packages/pkg_testing.pks
 @/opt/quiz-project/sql/05_packages/pkg_testing.pkb
+@/opt/quiz-project/sql/05_packages/pkg_admin.pks
+@/opt/quiz-project/sql/05_packages/pkg_admin.pkb
 @/opt/quiz-project/sql/06_views/01_views.sql
 
 @/opt/quiz-project/sql/tests/check_invalid_objects.sql
