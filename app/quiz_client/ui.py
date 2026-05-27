@@ -450,20 +450,24 @@ class QuizApplication(tk.Tk):
                 ).pack(anchor="w", pady=(0, 8))
                 wrapper = ttk.Frame(card, style="Panel.TFrame")
                 wrapper.pack(fill="x", pady=(0, 4))
-                listbox = tk.Listbox(
-                    wrapper,
-                    height=min(max(len(options), 4), 9),
-                    bg="#ffffff",
-                    relief="solid",
-                    bd=1,
-                    activestyle="none",
-                    selectmode="browse",
-                    font=("Segoe UI", 10),
+                list_shell = tk.Frame(wrapper, bg=COLORS["panel_alt"], highlightthickness=1, highlightbackground=COLORS["line"])
+                list_shell.pack(side="left", fill="both", expand=True)
+                row_height = 52
+                max_rows = min(max(len(options), 4), 9)
+                list_canvas = tk.Canvas(
+                    list_shell,
+                    bg=COLORS["panel_alt"],
+                    highlightthickness=0,
+                    bd=0,
+                    height=max_rows * row_height,
+                    cursor="hand2",
                 )
-                listbox.pack(side="left", fill="both", expand=True)
-                scrollbar = ttk.Scrollbar(wrapper, orient="vertical", command=listbox.yview)
-                scrollbar.pack(side="left", fill="y", padx=(8, 0))
-                listbox.configure(yscrollcommand=scrollbar.set)
+                list_canvas.pack(side="left", fill="both", expand=True)
+                scroll = ttk.Scrollbar(list_shell, orient="vertical", command=list_canvas.yview)
+                scroll.pack(side="left", fill="y")
+                list_canvas.configure(yscrollcommand=scroll.set)
+                rows_holder = tk.Frame(list_canvas, bg=COLORS["panel_alt"])
+                holder_window = list_canvas.create_window((0, 0), window=rows_holder, anchor="nw")
                 controls = ttk.Frame(wrapper, style="Panel.TFrame")
                 controls.pack(side="left", anchor="n", padx=(12, 0))
                 ordering_state = [{"option_id": row["option_id"], "option_text": row["option_text"]} for row in options]
@@ -472,51 +476,128 @@ class QuizApplication(tk.Tk):
                 if len(ordering_state) > 1 and [row["option_id"] for row in ordering_state] == baseline:
                     random.shuffle(ordering_state)
                 drag_state = {"index": None}
+                selected_state = {"index": 0}
 
-                def redraw_ordering(selected_index=0):
-                    listbox.delete(0, "end")
-                    for idx, row in enumerate(ordering_state, 1):
-                        listbox.insert("end", f"{idx}. {row['option_text']}")
-                    if ordering_state:
-                        selected_index = max(0, min(selected_index, len(ordering_state) - 1))
-                        listbox.selection_set(selected_index)
-                        listbox.activate(selected_index)
+                def on_holder_configure(_event=None):
+                    list_canvas.configure(scrollregion=list_canvas.bbox("all"))
+
+                def on_canvas_configure(event):
+                    list_canvas.itemconfigure(holder_window, width=event.width)
+
+                def clamp_index(index):
+                    if not ordering_state:
+                        return 0
+                    return max(0, min(index, len(ordering_state) - 1))
+
+                def resolve_order_row(widget):
+                    current = widget
+                    while current is not None and current is not rows_holder:
+                        if getattr(current, "_ordering_row", False):
+                            return current
+                        current = getattr(current, "master", None)
+                    return None
+
+                def refresh_ordering_cards():
+                    selected_state["index"] = clamp_index(selected_state["index"])
+                    for child in rows_holder.winfo_children():
+                        child.destroy()
+                    for idx, row in enumerate(ordering_state):
+                        active = idx == selected_state["index"]
+                        row_bg = COLORS["blue_soft"] if active else "#ffffff"
+                        border = COLORS["brand"] if active else COLORS["line"]
+                        row_frame = tk.Frame(
+                            rows_holder,
+                            bg=row_bg,
+                            highlightthickness=1,
+                            highlightbackground=border,
+                            padx=10,
+                            pady=8,
+                            cursor="hand2",
+                        )
+                        row_frame._ordering_row = True
+                        row_frame._ordering_index = idx
+                        row_frame.pack(fill="x", padx=8, pady=4)
+                        badge = tk.Label(
+                            row_frame,
+                            text=str(idx + 1),
+                            bg=COLORS["brand"],
+                            fg="#ffffff",
+                            width=2,
+                            font=("Segoe UI", 9, "bold"),
+                            padx=4,
+                        )
+                        badge.pack(side="left")
+                        handle = tk.Label(
+                            row_frame,
+                            text="⋮⋮",
+                            bg=row_bg,
+                            fg=COLORS["muted"],
+                            font=("Segoe UI", 10, "bold"),
+                            padx=10,
+                        )
+                        handle.pack(side="left")
+                        caption = tk.Label(
+                            row_frame,
+                            text=row["option_text"],
+                            bg=row_bg,
+                            fg=COLORS["ink"],
+                            font=("Segoe UI", 10),
+                            anchor="w",
+                            justify="left",
+                        )
+                        caption.pack(side="left", fill="x", expand=True)
+                        for widget in (row_frame, badge, handle, caption):
+                            widget.bind("<ButtonPress-1>", on_drag_start)
+                            widget.bind("<B1-Motion>", on_drag_motion)
+                            widget.bind("<ButtonRelease-1>", on_drag_end)
+                    on_holder_configure()
+
+                def find_target_index(y_root):
+                    rows = rows_holder.winfo_children()
+                    if not rows:
+                        return 0
+                    for idx, row_widget in enumerate(rows):
+                        midpoint = row_widget.winfo_rooty() + row_widget.winfo_height() / 2
+                        if y_root < midpoint:
+                            return idx
+                    return len(rows) - 1
 
                 def move_ordering(step):
-                    if not listbox.curselection():
-                        return
-                    index = listbox.curselection()[0]
-                    target = index + step
-                    if target < 0 or target >= len(ordering_state):
-                        return
-                    ordering_state[index], ordering_state[target] = ordering_state[target], ordering_state[index]
-                    redraw_ordering(target)
-
-                def on_drag_start(event):
                     if not ordering_state:
                         return
-                    index = listbox.nearest(event.y)
-                    if index < 0 or index >= len(ordering_state):
+                    source = clamp_index(selected_state["index"])
+                    target = source + step
+                    if target < 0 or target >= len(ordering_state):
                         return
+                    ordering_state[source], ordering_state[target] = ordering_state[target], ordering_state[source]
+                    selected_state["index"] = target
+                    refresh_ordering_cards()
+
+                def on_drag_start(event):
+                    row_widget = resolve_order_row(event.widget)
+                    if row_widget is None:
+                        return
+                    index = clamp_index(row_widget._ordering_index)
+                    selected_state["index"] = index
                     drag_state["index"] = index
-                    listbox.selection_clear(0, "end")
-                    listbox.selection_set(index)
-                    listbox.activate(index)
+                    refresh_ordering_cards()
 
                 def on_drag_motion(event):
                     if drag_state["index"] is None or not ordering_state:
                         return
-                    source = drag_state["index"]
-                    target = listbox.nearest(event.y)
-                    if target < 0 or target >= len(ordering_state) or target == source:
+                    source = clamp_index(drag_state["index"])
+                    target = clamp_index(find_target_index(event.y_root))
+                    if target == source:
                         return
                     moved = ordering_state.pop(source)
                     ordering_state.insert(target, moved)
                     drag_state["index"] = target
-                    redraw_ordering(target)
+                    selected_state["index"] = target
+                    refresh_ordering_cards()
 
                 def on_drag_end(_event):
                     drag_state["index"] = None
+                    refresh_ordering_cards()
 
                 def reshuffle_ordering():
                     if len(ordering_state) < 2:
@@ -524,15 +605,15 @@ class QuizApplication(tk.Tk):
                     random.shuffle(ordering_state)
                     if [row["option_id"] for row in ordering_state] == baseline:
                         random.shuffle(ordering_state)
-                    redraw_ordering(0)
+                    selected_state["index"] = 0
+                    refresh_ordering_cards()
 
                 ttk.Button(controls, text="Вверх", style="Quiet.TButton", command=lambda: move_ordering(-1)).pack(fill="x")
                 ttk.Button(controls, text="Вниз", style="Quiet.TButton", command=lambda: move_ordering(1)).pack(fill="x", pady=(8, 0))
                 ttk.Button(controls, text="Перемешать", style="Quiet.TButton", command=reshuffle_ordering).pack(fill="x", pady=(8, 0))
-                listbox.bind("<ButtonPress-1>", on_drag_start)
-                listbox.bind("<B1-Motion>", on_drag_motion)
-                listbox.bind("<ButtonRelease-1>", on_drag_end)
-                redraw_ordering()
+                rows_holder.bind("<Configure>", on_holder_configure)
+                list_canvas.bind("<Configure>", on_canvas_configure)
+                refresh_ordering_cards()
         else:
             prompt = "Введите ответ"
             ttk.Label(card, text=prompt, style="Card.TLabel").pack(anchor="w", pady=(0, 7))
