@@ -46,6 +46,22 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
         END IF;
     END;
 
+    PROCEDURE require_quiz_manager(p_actor_id IN NUMBER, p_quiz_id IN NUMBER) IS
+        v_count NUMBER;
+        v_role VARCHAR2(20);
+    BEGIN
+        require_editor(p_actor_id);
+        v_role := actor_role(p_actor_id);
+        SELECT COUNT(*)
+          INTO v_count
+          FROM quizzes
+         WHERE quiz_id = p_quiz_id
+           AND (author_id = p_actor_id OR v_role = 'ADMIN');
+        IF v_count = 0 THEN
+            RAISE_APPLICATION_ERROR(-20125, 'Удалять можно только свой тест (или под ролью администратора).');
+        END IF;
+    END;
+
     PROCEDURE create_topic (
         p_actor_id IN NUMBER,
         p_title IN VARCHAR2,
@@ -321,14 +337,93 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
         p_admin_id IN NUMBER,
         p_question_id IN NUMBER
     ) IS
+        v_quiz_id NUMBER;
+        v_in_progress NUMBER;
     BEGIN
-        require_admin(p_admin_id);
-        DELETE FROM questions
-         WHERE question_id = p_question_id
-           AND quiz_id IN (SELECT quiz_id FROM quizzes WHERE status = 'DRAFT');
-        IF SQL%ROWCOUNT = 0 THEN
-            RAISE_APPLICATION_ERROR(-20118, 'Удалять можно только вопрос из черновика.');
+        SELECT quiz_id
+          INTO v_quiz_id
+          FROM questions
+         WHERE question_id = p_question_id;
+        require_quiz_manager(p_admin_id, v_quiz_id);
+
+        SELECT COUNT(*)
+          INTO v_in_progress
+          FROM attempts
+         WHERE quiz_id = v_quiz_id
+           AND status = 'IN_PROGRESS';
+        IF v_in_progress > 0 THEN
+            RAISE_APPLICATION_ERROR(-20126, 'Нельзя удалить вопрос, пока есть активные попытки по этому тесту.');
         END IF;
+
+        DELETE FROM attempt_questions
+         WHERE question_id = p_question_id;
+
+        DELETE FROM questions
+         WHERE question_id = p_question_id;
+        IF SQL%ROWCOUNT = 0 THEN
+            RAISE_APPLICATION_ERROR(-20118, 'Вопрос не найден.');
+        END IF;
+
+        UPDATE questions
+           SET seq_no = seq_no + 100000
+         WHERE quiz_id = v_quiz_id;
+
+        MERGE INTO questions q
+        USING (
+            SELECT ROWID rid, ROW_NUMBER() OVER (ORDER BY seq_no) AS new_seq
+              FROM questions
+             WHERE quiz_id = v_quiz_id
+        ) src
+           ON (q.ROWID = src.rid)
+        WHEN MATCHED THEN
+            UPDATE SET q.seq_no = src.new_seq;
+
+        UPDATE attempt_questions
+           SET display_order = display_order + 100000
+         WHERE attempt_id IN (
+            SELECT attempt_id
+              FROM attempts
+             WHERE quiz_id = v_quiz_id
+         );
+
+        MERGE INTO attempt_questions aq
+        USING (
+            SELECT ROWID rid,
+                   ROW_NUMBER() OVER (PARTITION BY attempt_id ORDER BY display_order) AS new_order
+              FROM attempt_questions
+             WHERE attempt_id IN (
+                SELECT attempt_id
+                  FROM attempts
+                 WHERE quiz_id = v_quiz_id
+             )
+        ) src
+           ON (aq.ROWID = src.rid)
+        WHEN MATCHED THEN
+            UPDATE SET aq.display_order = src.new_order;
+
+        UPDATE attempts a
+           SET awarded_points = (
+                   SELECT NVL(SUM(ua.awarded_points), 0)
+                     FROM attempt_questions aq
+                     LEFT JOIN user_answers ua
+                       ON ua.attempt_id = aq.attempt_id
+                      AND ua.question_id = aq.question_id
+                    WHERE aq.attempt_id = a.attempt_id
+               ),
+               max_points = (
+                   SELECT NVL(SUM(q.points), 0)
+                     FROM attempt_questions aq
+                     JOIN questions q ON q.question_id = aq.question_id
+                    WHERE aq.attempt_id = a.attempt_id
+               )
+         WHERE a.quiz_id = v_quiz_id;
+
+        UPDATE attempts a
+           SET score_percent = fn_attempt_percent(a.attempt_id)
+         WHERE a.quiz_id = v_quiz_id;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20118, 'Вопрос не найден.');
     END;
 
     PROCEDURE delete_quiz (
@@ -336,12 +431,15 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
         p_quiz_id IN NUMBER
     ) IS
     BEGIN
-        require_admin(p_admin_id);
+        require_quiz_manager(p_admin_id, p_quiz_id);
+
+        DELETE FROM attempts
+         WHERE quiz_id = p_quiz_id;
+
         DELETE FROM quizzes
-         WHERE quiz_id = p_quiz_id
-           AND status = 'DRAFT';
+         WHERE quiz_id = p_quiz_id;
         IF SQL%ROWCOUNT = 0 THEN
-            RAISE_APPLICATION_ERROR(-20119, 'Удалять можно только черновик. Опубликованный тест архивируйте.');
+            RAISE_APPLICATION_ERROR(-20119, 'Тест не найден.');
         END IF;
     END;
 

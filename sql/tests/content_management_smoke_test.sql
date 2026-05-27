@@ -47,9 +47,27 @@ BEGIN
     IF v_count <> 2 THEN
         RAISE_APPLICATION_ERROR(-20990, 'AUTHOR could not edit a draft question and replace its options.');
     END IF;
-    pkg_admin.delete_question(v_admin_id, v_question_id);
+    pkg_admin.publish_quiz(v_author_id, v_quiz_id);
+    pkg_testing.start_attempt(v_author_id, v_quiz_id, v_attempt_id);
+    pkg_testing.finish_attempt(v_attempt_id);
+
+    pkg_admin.delete_question(v_author_id, v_question_id);
+    SELECT max_points INTO v_count FROM attempts WHERE attempt_id = v_attempt_id;
+    IF v_count <> 0 THEN
+        RAISE_APPLICATION_ERROR(-20989, 'Deleting question did not recalculate existing attempt totals.');
+    END IF;
+
+    pkg_admin.delete_quiz(v_author_id, v_quiz_id);
+    SELECT COUNT(*) INTO v_count FROM quizzes WHERE quiz_id = v_quiz_id;
+    IF v_count <> 0 THEN
+        RAISE_APPLICATION_ERROR(-20988, 'AUTHOR could not delete own quiz.');
+    END IF;
+    SELECT COUNT(*) INTO v_count FROM attempts WHERE quiz_id = v_quiz_id;
+    IF v_count <> 0 THEN
+        RAISE_APPLICATION_ERROR(-20987, 'Deleting quiz did not reset quiz statistics (attempts).');
+    END IF;
+
     pkg_admin.delete_category(v_admin_id, v_category_id);
-    pkg_admin.delete_quiz(v_admin_id, v_quiz_id);
     pkg_admin.delete_topic(v_admin_id, v_topic_id);
 
     SELECT quiz_id INTO v_demo_quiz_id FROM quizzes WHERE title = 'Oracle: основы серверной логики';
@@ -67,7 +85,7 @@ BEGIN
         RAISE_APPLICATION_ERROR(-20991, 'ADMIN could not reset all user attempts.');
     END IF;
 
-    DBMS_OUTPUT.PUT_LINE('Content management smoke test successful. AUTHOR editing, ADMIN deletion and progress reset verified.');
+    DBMS_OUTPUT.PUT_LINE('Content management smoke test successful. AUTHOR deletion and stats recalculation verified.');
     ROLLBACK TO before_content_management_test;
 END;
 /

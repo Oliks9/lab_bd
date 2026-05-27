@@ -846,9 +846,10 @@ class QuizApplication(tk.Tk):
         editor_title.pack(anchor="w")
         editor_note = ttk.Label(form, text="Заполните поля и добавьте вопрос в выбранный черновик.", style="Muted.TLabel")
         editor_note.pack(anchor="w", pady=(3, 10))
-        drafts = [row for row in self.gateway.admin_quizzes(self.user) if row["status"] == "DRAFT"]
-        quiz_values = [f"{row['quiz_id']} | {row['title']}" for row in drafts]
-        draft_topics = {row["quiz_id"]: row["topic_id"] for row in drafts}
+        managed_quizzes = [row for row in self.gateway.admin_quizzes(self.user) if row["status"] != "ARCHIVED"]
+        quiz_values = [f"{row['quiz_id']} | {row['title']} ({STATUS_NAMES.get(row['status'], row['status'])})" for row in managed_quizzes]
+        quiz_topics = {row["quiz_id"]: row["topic_id"] for row in managed_quizzes}
+        quiz_statuses = {row["quiz_id"]: row["status"] for row in managed_quizzes}
         types, difficulties = self.gateway.dictionaries()
         type_values = [f"{row['type_code']} | {row['type_name']}" for row in types]
         diff_values = [f"{row['difficulty_code']} | {row['difficulty_name']}" for row in difficulties]
@@ -979,7 +980,7 @@ class QuizApplication(tk.Tk):
                 q_category.set("")
                 return
             quiz_id = int(q_quiz.get().split("|", 1)[0])
-            topic_id = draft_topics[quiz_id]
+            topic_id = quiz_topics[quiz_id]
             categories = self.gateway.admin_categories(topic_id)
             category_values = [f"{row['category_id']} | {row['title']}" for row in categories]
             q_category["values"] = category_values
@@ -1022,6 +1023,10 @@ class QuizApplication(tk.Tk):
             if not q_quiz.get() or not q_category.get() or not q_text.get().strip():
                 messagebox.showwarning("Вопрос", "Выберите черновик и категорию, затем введите текст вопроса.")
                 return
+            quiz_id = int(q_quiz.get().split("|", 1)[0])
+            if quiz_statuses.get(quiz_id) != "DRAFT":
+                messagebox.showwarning("Вопрос", "Добавлять и редактировать можно только вопросы в тесте со статусом «Черновик».")
+                return
             try:
                 code = type_code()
                 options_list = []
@@ -1049,7 +1054,7 @@ class QuizApplication(tk.Tk):
                     options_list,
                 )
                 if editor_state["question_id"] is None:
-                    self.gateway.create_question(fields[0], int(q_quiz.get().split("|", 1)[0]), *fields[1:])
+                    self.gateway.create_question(fields[0], quiz_id, *fields[1:])
                     messagebox.showinfo("Вопрос", "Вопрос добавлен в черновик.")
                 else:
                     self.gateway.update_question(fields[0], editor_state["question_id"], *fields[1:])
@@ -1062,7 +1067,11 @@ class QuizApplication(tk.Tk):
             if not question_tree.selection():
                 messagebox.showwarning("Вопрос", "Выберите вопрос в списке.")
                 return
-            if not messagebox.askyesno("Удалить вопрос", "Удалить выбранный вопрос из черновика?"):
+            if not messagebox.askyesno(
+                "Удалить вопрос",
+                "Удалить выбранный вопрос?\n"
+                "Для опубликованных тестов статистика будет пересчитана по оставшимся вопросам.",
+            ):
                 return
             try:
                 self.gateway.delete_question(self.user.user_id, int(question_tree.selection()[0]))
@@ -1075,8 +1084,7 @@ class QuizApplication(tk.Tk):
         save_button = ttk.Button(form_actions, text="Добавить вопрос", style="Primary.TButton", command=save_question)
         save_button.pack(side="left")
         ttk.Button(form_actions, text="Очистить форму", style="Quiet.TButton", command=clear_fields).pack(side="left", padx=(8, 0))
-        if self.user.role_code == "ADMIN":
-            ttk.Button(listing, text="Удалить выбранный вопрос", style="Danger.TButton", command=delete_question).pack(anchor="e", pady=(10, 0))
+        ttk.Button(listing, text="Удалить выбранный вопрос", style="Danger.TButton", command=delete_question).pack(anchor="e", pady=(10, 0))
         q_quiz.bind("<<ComboboxSelected>>", refresh_question_context)
         q_type.bind("<<ComboboxSelected>>", update_answer_fields)
         question_tree.bind("<<TreeviewSelect>>", load_question)
@@ -1144,9 +1152,13 @@ class QuizApplication(tk.Tk):
 
         def delete_quiz():
             if not tree.selection():
-                messagebox.showwarning("Тест", "Выберите черновик в таблице.")
+                messagebox.showwarning("Тест", "Выберите тест в таблице.")
                 return
-            if not messagebox.askyesno("Удалить черновик", "Удалить выбранный черновик вместе с его вопросами?"):
+            if not messagebox.askyesno(
+                "Удалить тест",
+                "Удалить выбранный тест вместе с его вопросами?\n"
+                "Все попытки по этому тесту будут удалены, статистика сбросится.",
+            ):
                 return
             try:
                 self.gateway.delete_quiz(self.user.user_id, int(tree.selection()[0]))
@@ -1166,8 +1178,9 @@ class QuizApplication(tk.Tk):
             except Exception as exc:
                 self.report_error(exc)
 
+        if self.user.role_code in ("ADMIN", "AUTHOR"):
+            ttk.Button(actions, text="Удалить тест", style="Danger.TButton", command=delete_quiz).pack(side="right", padx=(0, 9))
         if self.user.role_code == "ADMIN":
-            ttk.Button(actions, text="Удалить черновик", style="Danger.TButton", command=delete_quiz).pack(side="right", padx=(0, 9))
             ttk.Button(actions, text="Архивировать", style="Quiet.TButton", command=archive_quiz).pack(side="right", padx=(0, 9))
 
     def build_admin_statistics(self, notebook):
