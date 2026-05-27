@@ -59,7 +59,7 @@ class OracleGateway:
         return self._rows(
             """
             SELECT quiz_id, topic_title, quiz_title, description, timer_mode, duration_minutes,
-                   question_count, max_points, author_name
+                   question_count, max_points, author_name, access_mode, status
               FROM v_quiz_catalog
              WHERE fn_can_access_quiz(:user_id, quiz_id) = 1
                AND (:topic_id IS NULL OR topic_id = :topic_id)

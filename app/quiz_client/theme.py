@@ -18,6 +18,10 @@ COLORS = {
     "blue_soft": "#e9f2ff",
     "brand": "#0f6cbf",
     "brand_dark": "#0c5ea7",
+    "chip_bg": "#eef4fb",
+    "chip_border": "#cbd9eb",
+    "chip_text": "#24446b",
+    "hover_soft": "#f7fafc",
 }
 
 
