@@ -1841,7 +1841,7 @@ class QuizApplication(tk.Tk):
             except Exception as exc:
                 self.report_error(exc)
 
-        actions = ttk.Frame(tab, style="App.TFrame")
+        actions = ttk.Frame(settings, style="Panel.TFrame")
         actions.pack(fill="x", pady=(12, 0))
         state_row = ttk.Frame(actions, style="Panel.TFrame")
         state_row.pack(fill="x")
