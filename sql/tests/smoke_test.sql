@@ -45,8 +45,14 @@ BEGIN
        AND q.seq_no = 5;
     pkg_testing.submit_answer(v_attempt_id, v_question_id, v_option_ids, NULL);
 
-    SELECT question_id INTO v_question_id FROM questions WHERE quiz_id = v_quiz_id AND seq_no = 6;
-    pkg_testing.submit_answer(v_attempt_id, v_question_id, NULL, 'SELECT;FROM;WHERE');
+    SELECT q.question_id, LISTAGG(TO_CHAR(qo.option_id), ',') WITHIN GROUP (ORDER BY qo.seq_no)
+      INTO v_question_id, v_option_ids
+      FROM questions q
+      JOIN question_options qo ON qo.question_id = q.question_id
+     WHERE q.quiz_id = v_quiz_id
+       AND q.seq_no = 6
+     GROUP BY q.question_id;
+    pkg_testing.submit_answer(v_attempt_id, v_question_id, v_option_ids, NULL);
 
     pkg_testing.finish_attempt(v_attempt_id);
     SELECT score_percent INTO v_score FROM attempts WHERE attempt_id = v_attempt_id;

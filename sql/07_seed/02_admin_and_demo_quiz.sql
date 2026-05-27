@@ -61,9 +61,12 @@ BEGIN
 
     pkg_admin.add_question(
         v_admin_id, v_quiz_id, v_category_id, 'ORDERING', 'HARD',
-        'Введите логический порядок частей SELECT через точку с запятой: FROM, WHERE, SELECT.',
-        'SELECT;FROM;WHERE', 'Сначала задается SELECT, затем источник FROM и условие WHERE.', 2, v_question_id
+        'Расположите части запроса в порядке, который ожидается в этом задании.',
+        NULL, 'В этом учебном примере порядок ожидается как: SELECT -> FROM -> WHERE.', 2, v_question_id
     );
+    pkg_admin.add_option(v_admin_id, v_question_id, 'SELECT', 1, v_option_id);
+    pkg_admin.add_option(v_admin_id, v_question_id, 'FROM', 1, v_option_id);
+    pkg_admin.add_option(v_admin_id, v_question_id, 'WHERE', 1, v_option_id);
 
     pkg_admin.publish_quiz(v_admin_id, v_quiz_id);
 END;

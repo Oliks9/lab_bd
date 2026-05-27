@@ -197,7 +197,7 @@ class OracleGateway:
         return self._rows(
             """
             SELECT q.quiz_id, q.topic_id, t.title AS topic_title, q.title, q.status, q.access_mode,
-                   q.timer_mode, q.duration_minutes
+                   q.timer_mode, q.duration_minutes, q.show_feedback
               FROM quizzes q JOIN topics t ON t.topic_id = q.topic_id
              WHERE :role = 'ADMIN' OR q.author_id = :actor_id
              ORDER BY q.created_at DESC
@@ -304,6 +304,11 @@ class OracleGateway:
     def publish_quiz(self, actor_id: int, quiz_id: int) -> None:
         with self.connection.cursor() as cursor:
             cursor.callproc("pkg_admin.publish_quiz", [actor_id, quiz_id])
+        self.connection.commit()
+
+    def set_quiz_feedback(self, actor_id: int, quiz_id: int, show_feedback: int) -> None:
+        with self.connection.cursor() as cursor:
+            cursor.callproc("pkg_admin.set_quiz_feedback", [actor_id, quiz_id, show_feedback])
         self.connection.commit()
 
     def grant_access(self, actor_id: int, quiz_id: int, user_id: int) -> None:

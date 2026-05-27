@@ -29,6 +29,12 @@ BEGIN
     END IF;
 
     pkg_admin.create_quiz(v_author_id, v_topic_id, 'Temporary draft', NULL, 'QUIZ', 10, 1, 'PUBLIC', v_quiz_id);
+    pkg_admin.set_quiz_feedback(v_author_id, v_quiz_id, 0);
+    SELECT show_feedback INTO v_count FROM quizzes WHERE quiz_id = v_quiz_id;
+    IF v_count <> 0 THEN
+        RAISE_APPLICATION_ERROR(-20994, 'Could not update show_feedback for draft quiz.');
+    END IF;
+    pkg_admin.set_quiz_feedback(v_author_id, v_quiz_id, 1);
     pkg_admin.add_question(
         v_author_id, v_quiz_id, v_category_id, 'TEXT', 'EASY',
         'Temporary question', 'answer', NULL, 1, v_question_id

@@ -57,6 +57,17 @@ SELECT
     ua.is_correct,
     ua.awarded_points,
     CASE
+        WHEN q.type_code = 'ORDERING' THEN
+            (SELECT LISTAGG(qo.option_text, ' -> ') WITHIN GROUP (ORDER BY x.item_order)
+               FROM (
+                    SELECT TO_NUMBER(REGEXP_SUBSTR(ua.text_answer, '[^,]+', 1, LEVEL)) AS option_id,
+                           LEVEL AS item_order
+                      FROM dual
+                    CONNECT BY REGEXP_SUBSTR(ua.text_answer, '[^,]+', 1, LEVEL) IS NOT NULL
+               ) x
+               JOIN question_options qo
+                 ON qo.question_id = q.question_id
+                AND qo.option_id = x.option_id)
         WHEN q.type_code IN ('SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'BOOLEAN') THEN
             (SELECT LISTAGG(qo.option_text, '; ') WITHIN GROUP (ORDER BY qo.seq_no)
                FROM answer_choices ac
@@ -65,6 +76,10 @@ SELECT
         ELSE ua.text_answer
     END AS given_answer,
     CASE
+        WHEN q.type_code = 'ORDERING' THEN
+            (SELECT LISTAGG(qo.option_text, ' -> ') WITHIN GROUP (ORDER BY qo.seq_no)
+               FROM question_options qo
+              WHERE qo.question_id = q.question_id)
         WHEN q.type_code IN ('SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'BOOLEAN') THEN
             (SELECT LISTAGG(qo.option_text, '; ') WITHIN GROUP (ORDER BY qo.seq_no)
                FROM question_options qo

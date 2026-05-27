@@ -1,3 +1,4 @@
+import random
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -397,6 +398,7 @@ class QuizApplication(tk.Tk):
         selected_radio = tk.IntVar(value=-1)
         selected_checks = {}
         text_value = ttk.Entry(card, width=75)
+        ordering_state = []
         if type_code in ("SINGLE_CHOICE", "BOOLEAN", "MULTIPLE_CHOICE"):
             options = self.gateway.question_options(question["question_id"])
             if type_code == "MULTIPLE_CHOICE":
@@ -408,10 +410,104 @@ class QuizApplication(tk.Tk):
                     ttk.Checkbutton(card, text=option["option_text"], variable=variable).pack(anchor="w", pady=6)
                 else:
                     ttk.Radiobutton(card, text=option["option_text"], variable=selected_radio, value=option["option_id"]).pack(anchor="w", pady=6)
+        elif type_code == "ORDERING":
+            options = self.gateway.question_options(question["question_id"])
+            if len(options) < 2:
+                ttk.Label(card, text="Для вопроса этого типа нужно минимум два элемента последовательности.", style="Muted.TLabel").pack(anchor="w", pady=(0, 8))
+            else:
+                ttk.Label(card, text="Расположите элементы в правильном порядке.", style="Card.TLabel").pack(anchor="w", pady=(0, 3))
+                ttk.Label(
+                    card,
+                    text="Перетаскивайте элементы мышью или используйте кнопки «Вверх/Вниз».",
+                    style="Muted.TLabel",
+                ).pack(anchor="w", pady=(0, 8))
+                wrapper = ttk.Frame(card, style="Panel.TFrame")
+                wrapper.pack(fill="x", pady=(0, 4))
+                listbox = tk.Listbox(
+                    wrapper,
+                    height=min(max(len(options), 4), 9),
+                    bg="#ffffff",
+                    relief="solid",
+                    bd=1,
+                    activestyle="none",
+                    selectmode="browse",
+                    font=("Segoe UI", 10),
+                )
+                listbox.pack(side="left", fill="both", expand=True)
+                scrollbar = ttk.Scrollbar(wrapper, orient="vertical", command=listbox.yview)
+                scrollbar.pack(side="left", fill="y", padx=(8, 0))
+                listbox.configure(yscrollcommand=scrollbar.set)
+                controls = ttk.Frame(wrapper, style="Panel.TFrame")
+                controls.pack(side="left", anchor="n", padx=(12, 0))
+                ordering_state = [{"option_id": row["option_id"], "option_text": row["option_text"]} for row in options]
+                baseline = [row["option_id"] for row in ordering_state]
+                random.shuffle(ordering_state)
+                if len(ordering_state) > 1 and [row["option_id"] for row in ordering_state] == baseline:
+                    random.shuffle(ordering_state)
+                drag_state = {"index": None}
+
+                def redraw_ordering(selected_index=0):
+                    listbox.delete(0, "end")
+                    for idx, row in enumerate(ordering_state, 1):
+                        listbox.insert("end", f"{idx}. {row['option_text']}")
+                    if ordering_state:
+                        selected_index = max(0, min(selected_index, len(ordering_state) - 1))
+                        listbox.selection_set(selected_index)
+                        listbox.activate(selected_index)
+
+                def move_ordering(step):
+                    if not listbox.curselection():
+                        return
+                    index = listbox.curselection()[0]
+                    target = index + step
+                    if target < 0 or target >= len(ordering_state):
+                        return
+                    ordering_state[index], ordering_state[target] = ordering_state[target], ordering_state[index]
+                    redraw_ordering(target)
+
+                def on_drag_start(event):
+                    if not ordering_state:
+                        return
+                    index = listbox.nearest(event.y)
+                    if index < 0 or index >= len(ordering_state):
+                        return
+                    drag_state["index"] = index
+                    listbox.selection_clear(0, "end")
+                    listbox.selection_set(index)
+                    listbox.activate(index)
+
+                def on_drag_motion(event):
+                    if drag_state["index"] is None or not ordering_state:
+                        return
+                    source = drag_state["index"]
+                    target = listbox.nearest(event.y)
+                    if target < 0 or target >= len(ordering_state) or target == source:
+                        return
+                    moved = ordering_state.pop(source)
+                    ordering_state.insert(target, moved)
+                    drag_state["index"] = target
+                    redraw_ordering(target)
+
+                def on_drag_end(_event):
+                    drag_state["index"] = None
+
+                def reshuffle_ordering():
+                    if len(ordering_state) < 2:
+                        return
+                    random.shuffle(ordering_state)
+                    if [row["option_id"] for row in ordering_state] == baseline:
+                        random.shuffle(ordering_state)
+                    redraw_ordering(0)
+
+                ttk.Button(controls, text="Вверх", style="Quiet.TButton", command=lambda: move_ordering(-1)).pack(fill="x")
+                ttk.Button(controls, text="Вниз", style="Quiet.TButton", command=lambda: move_ordering(1)).pack(fill="x", pady=(8, 0))
+                ttk.Button(controls, text="Перемешать", style="Quiet.TButton", command=reshuffle_ordering).pack(fill="x", pady=(8, 0))
+                listbox.bind("<ButtonPress-1>", on_drag_start)
+                listbox.bind("<B1-Motion>", on_drag_motion)
+                listbox.bind("<ButtonRelease-1>", on_drag_end)
+                redraw_ordering()
         else:
             prompt = "Введите ответ"
-            if type_code == "ORDERING":
-                prompt = "Введите последовательность через точку с запятой"
             ttk.Label(card, text=prompt, style="Card.TLabel").pack(anchor="w", pady=(0, 7))
             text_value.pack(fill="x", anchor="w")
 
@@ -427,6 +523,8 @@ class QuizApplication(tk.Tk):
             elif type_code in ("SINGLE_CHOICE", "BOOLEAN"):
                 if selected_radio.get() != -1:
                     selected_ids = str(selected_radio.get())
+            elif type_code == "ORDERING":
+                selected_ids = ",".join(str(row["option_id"]) for row in ordering_state)
             else:
                 answer_text = text_value.get().strip()
             if not selected_ids and not answer_text:
@@ -906,8 +1004,9 @@ class QuizApplication(tk.Tk):
         options_label.pack(anchor="w")
         options = tk.Text(option_field, height=3, bg="#ffffff", relief="solid", bd=1, font=("Segoe UI", 9))
         options.pack(fill="x", pady=(3, 5))
-        ttk.Label(option_field, text="Номера правильных вариантов (например, 1 или 1,3)", style="Muted.TLabel").pack(anchor="w")
-        correct = ttk.Entry(option_field)
+        correct_field = ttk.Frame(option_field, style="Panel.TFrame")
+        ttk.Label(correct_field, text="Номера правильных вариантов (например, 1 или 1,3)", style="Muted.TLabel").pack(anchor="w")
+        correct = ttk.Entry(correct_field)
         correct.pack(fill="x", pady=(3, 0))
         boolean_field = ttk.Frame(answer_area, style="Panel.TFrame")
         ttk.Label(boolean_field, text="Правильный ответ", style="Muted.TLabel").pack(anchor="w")
@@ -934,18 +1033,22 @@ class QuizApplication(tk.Tk):
         def update_answer_fields(_event=None):
             expected_field.pack_forget()
             option_field.pack_forget()
+            correct_field.pack_forget()
             boolean_field.pack_forget()
             code = type_code()
             if code == "BOOLEAN":
                 boolean_field.pack(fill="x")
+            elif code == "ORDERING":
+                options_label.configure(text="Элементы последовательности: каждый с новой строки в правильном порядке")
+                option_field.pack(fill="x")
             elif type_modes.get(code) == "OPTIONS":
                 options_label.configure(text="Варианты: один вариант в каждой строке")
                 option_field.pack(fill="x")
+                correct_field.pack(fill="x", pady=(0, 0))
             else:
                 expected_labels = {
                     "TEXT": "Правильный текстовый ответ",
                     "NUMBER": "Правильное число",
-                    "ORDERING": "Правильный порядок (через ;)",
                 }
                 expected_label.configure(text=expected_labels.get(code, "Правильный ответ"))
                 expected_field.pack(fill="x")
@@ -1035,20 +1138,26 @@ class QuizApplication(tk.Tk):
                         ("Верно", int(boolean_answer.get() == "Верно")),
                         ("Неверно", int(boolean_answer.get() == "Неверно")),
                     ]
-                elif type_modes.get(code) == "OPTIONS":
+                elif code == "ORDERING" or type_modes.get(code) == "OPTIONS":
                     raw_options = [line.strip() for line in options.get("1.0", "end").splitlines() if line.strip()]
-                    indexes = {int(value.strip()) for value in correct.get().split(",") if value.strip().isdigit()}
-                    if not raw_options or not indexes:
-                        messagebox.showwarning("Вопрос", "Для вопроса с выбором заполните варианты и номер правильного ответа.")
-                        return
-                    options_list = [(text, int(index in indexes)) for index, text in enumerate(raw_options, 1)]
+                    if code == "ORDERING":
+                        if len(raw_options) < 2:
+                            messagebox.showwarning("Вопрос", "Для последовательности добавьте минимум два элемента.")
+                            return
+                        options_list = [(text, 1) for text in raw_options]
+                    else:
+                        indexes = {int(value.strip()) for value in correct.get().split(",") if value.strip().isdigit()}
+                        if not raw_options or not indexes:
+                            messagebox.showwarning("Вопрос", "Для вопроса с выбором заполните варианты и номер правильного ответа.")
+                            return
+                        options_list = [(text, int(index in indexes)) for index, text in enumerate(raw_options, 1)]
                 fields = (
                     self.user.user_id,
                     int(q_category.get().split("|", 1)[0]),
                     code,
                     q_diff.get().split("|", 1)[0].strip(),
                     q_text.get().strip(),
-                    expected.get().strip() if type_modes.get(code) != "OPTIONS" else "",
+                    expected.get().strip() if type_modes.get(code) != "OPTIONS" and code != "ORDERING" else "",
                     explanation.get().strip(),
                     float(points.get()),
                     options_list,
@@ -1104,11 +1213,71 @@ class QuizApplication(tk.Tk):
             tree.column(name, width=width)
         tree.pack(fill="both", expand=True)
         quizzes = self.gateway.admin_quizzes(self.user)
+        quiz_map = {row["quiz_id"]: row for row in quizzes}
         for row in quizzes:
             tree.insert(
                 "", "end", iid=str(row["quiz_id"]),
                 values=(row["topic_title"], row["title"], ACCESS_NAMES.get(row["access_mode"], row["access_mode"]), STATUS_NAMES.get(row["status"], row["status"])),
             )
+
+        settings_outer, settings = self.panel(tab, padding=12)
+        settings_outer.pack(fill="x", pady=(10, 0))
+        ttk.Label(settings, text="Настройки выбранного теста", style="CardTitle.TLabel").pack(anchor="w")
+        feedback_var = tk.BooleanVar(value=True)
+        feedback_toggle = ttk.Checkbutton(
+            settings,
+            text="Показывать правильные ответы и пояснения автора в результате",
+            variable=feedback_var,
+        )
+        feedback_toggle.pack(anchor="w", pady=(8, 0))
+        feedback_hint = ttk.Label(settings, text="", style="Muted.TLabel")
+        feedback_hint.pack(anchor="w", pady=(4, 0))
+
+        def selected_quiz():
+            if not tree.selection():
+                return None
+            return quiz_map.get(int(tree.selection()[0]))
+
+        def refresh_feedback_controls(_event=None):
+            row = selected_quiz()
+            if row is None:
+                feedback_var.set(True)
+                feedback_toggle.configure(state="disabled")
+                save_feedback.configure(state="disabled")
+                feedback_hint.configure(text="Выберите тест. Изменение доступно только для черновика.")
+                return
+            feedback_var.set(int(row.get("show_feedback") or 0) == 1)
+            if row["status"] == "DRAFT":
+                feedback_toggle.configure(state="normal")
+                save_feedback.configure(state="normal")
+                feedback_hint.configure(text="Черновик: настройку можно менять перед публикацией.")
+            else:
+                feedback_toggle.configure(state="disabled")
+                save_feedback.configure(state="disabled")
+                feedback_hint.configure(text="Опубликованный тест: чтобы изменить настройку, сначала скройте его в черновик.")
+
+        def apply_feedback_setting():
+            row = selected_quiz()
+            if row is None:
+                messagebox.showwarning("Пояснения", "Сначала выберите тест в таблице.")
+                return
+            if row["status"] != "DRAFT":
+                messagebox.showwarning("Пояснения", "Изменять настройку можно только у черновика.")
+                return
+            try:
+                self.gateway.set_quiz_feedback(self.user.user_id, row["quiz_id"], int(feedback_var.get()))
+                messagebox.showinfo("Пояснения", "Настройка черновика сохранена.")
+                self.show_admin("Публикация")
+            except Exception as exc:
+                self.report_error(exc)
+
+        save_feedback = ttk.Button(
+            settings,
+            text="Сохранить настройку для черновика",
+            style="Quiet.TButton",
+            command=apply_feedback_setting,
+        )
+        save_feedback.pack(anchor="w", pady=(8, 0))
 
         def publish():
             if not tree.selection():
@@ -1186,6 +1355,8 @@ class QuizApplication(tk.Tk):
             ttk.Button(actions, text="Удалить тест", style="Danger.TButton", command=delete_quiz).pack(side="right", padx=(0, 9))
         if self.user.role_code in ("ADMIN", "AUTHOR"):
             ttk.Button(actions, text="Скрыть в черновик", style="Quiet.TButton", command=archive_quiz).pack(side="right", padx=(0, 9))
+        tree.bind("<<TreeviewSelect>>", refresh_feedback_controls)
+        refresh_feedback_controls()
 
     def build_admin_statistics(self, notebook):
         tab = ttk.Frame(notebook, style="App.TFrame", padding=16)

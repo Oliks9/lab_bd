@@ -102,7 +102,10 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
         v_selected_correct NUMBER := 0;
         v_correct_count NUMBER := 0;
         v_token_count NUMBER := 0;
+        v_total_option_count NUMBER := 0;
+        v_ordered_correct_ids VARCHAR2(4000);
         v_is_correct NUMBER(1) := 0;
+        v_text_to_store VARCHAR2(1000);
     BEGIN
         SELECT
             a.status,
@@ -162,15 +165,21 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
             END IF;
         END IF;
 
+        IF v_type = 'ORDERING' THEN
+            v_text_to_store := v_clean_ids;
+        ELSE
+            v_text_to_store := TRIM(p_text_answer);
+        END IF;
+
         DELETE FROM user_answers
          WHERE attempt_id = p_attempt_id
            AND question_id = p_question_id;
 
         INSERT INTO user_answers (attempt_id, question_id, text_answer)
-        VALUES (p_attempt_id, p_question_id, TRIM(p_text_answer))
+        VALUES (p_attempt_id, p_question_id, v_text_to_store)
         RETURNING answer_id INTO v_answer_id;
 
-        IF v_type IN ('SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'BOOLEAN') THEN
+        IF v_type IN ('SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'BOOLEAN', 'ORDERING') THEN
             IF v_clean_ids IS NULL OR NOT REGEXP_LIKE(v_clean_ids, '^[0-9]+(,[0-9]+)*$') THEN
                 RAISE_APPLICATION_ERROR(-20204, 'Выберите допустимый вариант ответа.');
             END IF;
@@ -187,18 +196,40 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
                 RAISE_APPLICATION_ERROR(-20205, 'Выбран некорректный набор вариантов.');
             END IF;
 
-            SELECT COUNT(*), NVL(SUM(qo.is_correct), 0)
-              INTO v_selected_count, v_selected_correct
-              FROM answer_choices ac
-              JOIN question_options qo ON qo.option_id = ac.option_id
-             WHERE ac.answer_id = v_answer_id;
-            SELECT COUNT(*) INTO v_correct_count
-              FROM question_options
-             WHERE question_id = p_question_id
-               AND is_correct = 1;
+            IF v_type = 'ORDERING' THEN
+                SELECT COUNT(*)
+                  INTO v_total_option_count
+                  FROM question_options
+                 WHERE question_id = p_question_id;
+                IF v_total_option_count < 2 THEN
+                    RAISE_APPLICATION_ERROR(-20209, 'Для этого вопроса не настроена корректная последовательность.');
+                END IF;
+                IF v_selected_count <> v_total_option_count THEN
+                    RAISE_APPLICATION_ERROR(-20205, 'Укажите полный порядок из всех элементов.');
+                END IF;
 
-            IF v_selected_count = v_correct_count AND v_selected_correct = v_correct_count THEN
-                v_is_correct := 1;
+                SELECT LISTAGG(TO_CHAR(option_id), ',') WITHIN GROUP (ORDER BY seq_no)
+                  INTO v_ordered_correct_ids
+                  FROM question_options
+                 WHERE question_id = p_question_id;
+
+                IF v_clean_ids = v_ordered_correct_ids THEN
+                    v_is_correct := 1;
+                END IF;
+            ELSE
+                SELECT COUNT(*), NVL(SUM(qo.is_correct), 0)
+                  INTO v_selected_count, v_selected_correct
+                  FROM answer_choices ac
+                  JOIN question_options qo ON qo.option_id = ac.option_id
+                 WHERE ac.answer_id = v_answer_id;
+                SELECT COUNT(*) INTO v_correct_count
+                  FROM question_options
+                 WHERE question_id = p_question_id
+                   AND is_correct = 1;
+
+                IF v_selected_count = v_correct_count AND v_selected_correct = v_correct_count THEN
+                    v_is_correct := 1;
+                END IF;
             END IF;
         ELSIF v_type = 'NUMBER' THEN
             BEGIN

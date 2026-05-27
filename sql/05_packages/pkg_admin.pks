@@ -63,6 +63,12 @@ CREATE OR REPLACE PACKAGE pkg_admin AS
         p_quiz_id IN NUMBER
     );
 
+    PROCEDURE set_quiz_feedback (
+        p_actor_id IN NUMBER,
+        p_quiz_id IN NUMBER,
+        p_show_feedback IN NUMBER
+    );
+
     PROCEDURE grant_access (
         p_actor_id IN NUMBER,
         p_quiz_id IN NUMBER,

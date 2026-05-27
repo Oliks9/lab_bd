@@ -278,6 +278,25 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
         UPDATE quizzes SET status = 'PUBLISHED' WHERE quiz_id = p_quiz_id;
     END;
 
+    PROCEDURE set_quiz_feedback (
+        p_actor_id IN NUMBER,
+        p_quiz_id IN NUMBER,
+        p_show_feedback IN NUMBER
+    ) IS
+    BEGIN
+        require_quiz_owner(p_actor_id, p_quiz_id);
+        IF p_show_feedback NOT IN (0, 1) THEN
+            RAISE_APPLICATION_ERROR(-20127, 'Параметр show_feedback должен быть 0 или 1.');
+        END IF;
+        UPDATE quizzes
+           SET show_feedback = p_show_feedback
+         WHERE quiz_id = p_quiz_id
+           AND status = 'DRAFT';
+        IF SQL%ROWCOUNT = 0 THEN
+            RAISE_APPLICATION_ERROR(-20128, 'Настройка доступна только для черновика теста.');
+        END IF;
+    END;
+
     PROCEDURE grant_access (
         p_actor_id IN NUMBER,
         p_quiz_id IN NUMBER,
