@@ -1,59 +1,54 @@
 # Oracle Quiz Platform
 
-Полноценное настольное приложение для онлайн-тестирования по курсовой работе. Бизнес-правила исполняются в Oracle PL/SQL; Python/Tkinter отвечает за окна и вызовы БД.
+Учебная платформа для онлайн-квизов и тестирования, где основная бизнес-логика реализована в Oracle (SQL/PLSQL), а Python/Tkinter используется как GUI-клиент.
 
-## Возможности
+## Ключевые возможности
 
-- Регистрация и вход пользователей приложения по логину и паролю.
-- Роли `USER`, `AUTHOR`, `ADMIN`; стартовая учетная запись только одна: `admin`.
-- Тематики, категории, сложность и шесть типов вопросов: один ответ, несколько ответов, текст, число, истина/ложь, упорядочивание.
-- Публичные и закрытые тесты, выдача доступа зарегистрированным пользователям.
-- Два режима таймера: на весь тест или на каждый вопрос (выбирается при создании теста), с учетом часовых поясов.
-- История попыток, обратная связь, статистика вопросов и средний результат.
-- Рабочая студия автора: тематики, категории, отдельные шаги создания теста и наполнения вопросами.
-- Редактирование вопросов черновика и динамические поля ответа в зависимости от выбранного типа вопроса.
-- Панель администратора для создания авторов, назначения ролей, удаления чернового контента и архивирования опубликованных тестов.
-- Отдельное управление прогрессом: сброс попыток пользователя по одному тесту или полной истории без удаления аккаунта.
-- Новые категории сразу доступны в конструкторе вопросов без повторного входа.
+- Регистрация и вход по логину и паролю.
+- Роли `USER`, `AUTHOR`, `ADMIN`.
+- Начальная учетная запись: `admin / Admin123!`.
+- Создание тематик, категорий, тестов и вопросов.
+- Шесть типов вопросов: `SINGLE_CHOICE`, `MULTIPLE_CHOICE`, `TEXT`, `NUMBER`, `BOOLEAN`, `ORDERING`.
+- Два режима таймера:
+  - `QUIZ`: ограничение на весь тест.
+  - `QUESTION`: ограничение на каждый вопрос с автопереходом к следующему.
+- Показ правильных ответов и пояснений автора в результатах (если у теста включен `show_feedback`).
+- Редактирование вопросов черновика.
+- Публикация тестов и выдача доступа к закрытым тестам.
+- Возврат опубликованного теста обратно в черновик (кнопка «Скрыть в черновик»).
+- Удаление тестов и вопросов автором своего теста или администратором.
+- При удалении теста удаляются его попытки (статистика по тесту сбрасывается).
+- При удалении вопроса пересчитываются `seq_no`, `display_order` и агрегаты попыток для оставшихся вопросов.
+- Администрирование пользователей, ролей и прогресса (сброс попыток по одному тесту или полностью по пользователю).
 
-## Дополнительная документация
+## Архитектура
 
-- [Отчет по выполненной работе](docs/01_project_completion_report.md)
-- [Карта серверной логики Oracle](docs/02_database_logic_map.md)
-- [Проверка и сценарий демонстрации](docs/03_validation_and_demo_scenarios.md)
+- Oracle-слой:
+  - таблицы, ограничения, триггеры;
+  - функции и процедуры авторизации;
+  - пакеты `pkg_admin` и `pkg_testing`;
+  - представления отчетности и статистики.
+- Python-слой:
+  - окна подключения, входа и регистрации;
+  - пользовательские экраны прохождения тестов;
+  - экран автора для управления контентом;
+  - экран администратора для пользователей, ролей и сброса прогресса.
+- Принцип: критичные правила не дублируются в GUI, а исполняются в Oracle.
 
 ## Быстрый запуск через Docker
-
-Docker-контур поднимает Oracle Database Free и при первом создании контейнера автоматически создает схему, устанавливает PL/SQL-модули и запускает smoke-test:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\docker\start.ps1
 powershell -ExecutionPolicy Bypass -File .\docker\check.ps1
 ```
 
-Для EXE используются параметры:
-
-```text
-DSN:              localhost:1521/FREEPDB1
-Пользователь БД:  quiz_app
-Пароль БД:        QuizSchema2026
-```
-
-Файлы Docker:
-
-- [compose.yaml](compose.yaml) — контейнер Oracle Free и volume данных.
-- [001_install_quiz_application.sql](docker/init/001_install_quiz_application.sql) — автоматическое создание схемы и установка проекта.
-- [reinstall.ps1](docker/reinstall.ps1) — повторная установка SQL-объектов после изменений.
-- [upgrade.ps1](docker/upgrade.ps1) — безопасное обновление уже заполненной базы без удаления пользователей и попыток.
-- [check.ps1](docker/check.ps1) — проверка компиляции объектов, часового пояса, регистрации/входа и всех типов вопросов.
-
-Если контейнер уже использовался, применяйте обновление с сохранением данных:
+Обновление существующей базы без потери пользователей и попыток:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\docker\upgrade.ps1
 ```
 
-При необходимости полностью очистить учебную базу и выполнить первичную инициализацию заново:
+Полная переинициализация учебной базы:
 
 ```powershell
 $env:DOCKER_CONFIG="$PWD\.docker-config"
@@ -61,39 +56,42 @@ docker compose down -v
 powershell -ExecutionPolicy Bypass -File .\docker\start.ps1
 ```
 
-## Структура
+Параметры подключения для GUI/EXE по умолчанию:
 
 ```text
-oracle_quiz_app/
-  compose.yaml                    # Oracle Free в Docker
-  docker/                         # автозапуск установки и проверки контейнера
-  app/
-    quiz_app.py                  # точка запуска GUI
-    quiz_client/
-      config.py                  # настройки соединения
-      database.py                # тонкий клиент PL/SQL/SQL
-      theme.py                   # оформление
-      ui.py                      # экраны приложения
-  sql/
-    install.sql                  # главный установочный сценарий
-    00_uninstall.sql
-    01_tables/                   # таблицы и индексы
-    02_functions/                # хэширование, доступ, процент
-    03_procedures/               # регистрация и вход
-    04_triggers/                 # контроль данных и аудит
-    05_packages/                 # администрирование и прохождение
-    06_views/                    # отчеты и статистика
-    07_seed/                     # справочники, admin и демо-тест
-    08_migrations/               # обновления существующей базы без потери данных
-    tests/smoke_test.sql
-  build/build_exe.ps1
-  dist/                          # собранный EXE
-  reference/                     # исходный шаблон оформления
+DSN:              localhost:1521/FREEPDB1
+Пользователь БД:  quiz_app
+Пароль БД:        QuizSchema2026
 ```
 
-## Установка Oracle
+## Запуск и сборка приложения
 
-Для новой схемы можно выполнить под пользователем DBA пример [create_schema_example.sql](sql/create_schema_example.sql), предварительно сменив пароль. При ручной установке запускайте `SQL*Plus` из каталога `sql`, чтобы вложенные сценарии разрешались относительно этого каталога:
+Запуск из исходников:
+
+```powershell
+.\.venv\Scripts\python.exe .\app\quiz_app.py
+```
+
+Сборка EXE:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build\build_exe.ps1 -Python .\.venv\Scripts\python.exe
+```
+
+Результат сборки:
+
+- `dist\OracleQuizPlatform.exe`
+
+Проверка подключения EXE в headless-режиме:
+
+```powershell
+.\dist\OracleQuizPlatform.exe --connection-check "localhost:1521/FREEPDB1" "quiz_app" "QuizSchema2026" "admin" "Admin123!"
+$LASTEXITCODE
+```
+
+Код `0` означает успешное подключение и вход.
+
+## Ручная установка SQL (без Docker)
 
 ```powershell
 Set-Location C:\Users\Oliks9\Documents\lb\oracle_quiz_app\sql
@@ -105,48 +103,45 @@ sqlplus quiz_app/QuizSchema2026@//localhost:1521/FREEPDB1 "@tests/content_manage
 sqlplus quiz_app/QuizSchema2026@//localhost:1521/FREEPDB1 "@tests/smoke_test.sql"
 ```
 
-Начальные учетные данные внутри приложения:
+## Структура проекта
 
 ```text
-Логин:  admin
-Пароль: Admin123!
+oracle_quiz_app/
+  app/
+    quiz_app.py
+    quiz_client/
+      config.py
+      database.py
+      theme.py
+      ui.py
+  build/
+    build_exe.ps1
+  docker/
+    start.ps1
+    upgrade.ps1
+    check.ps1
+    init/
+  docs/
+  sql/
+    install.sql
+    00_uninstall.sql
+    01_tables/
+    02_functions/
+    03_procedures/
+    04_triggers/
+    05_packages/
+    06_views/
+    07_seed/
+    08_migrations/
+    tests/
+  compose.yaml
+  README.md
 ```
 
-Они созданы в [02_admin_and_demo_quiz.sql](sql/07_seed/02_admin_and_demo_quiz.sql). В учебной демонстрации пароль видим в seed-скрипте; при развертывании его следует заменить.
+## Документация
 
-## Запуск EXE
-
-Запустите `dist\OracleQuizPlatform.exe`. На первом экране вводятся параметры технической схемы Oracle:
-
-```text
-DSN:              localhost:1521/FREEPDB1
-Пользователь БД:  quiz_app
-Пароль БД:        пароль схемы Oracle
-```
-
-После подключения приложение показывает обычный экран входа/регистрации пользователей платформы. Для проверки нужен запущенный Oracle с выполненным `install.sql`: EXE является клиентом и не содержит встроенную БД.
-
-## Где находится логика БД
-
-- [pr_register_user.sql](sql/03_procedures/pr_register_user.sql) и [pr_login.sql](sql/03_procedures/pr_login.sql) создают и аутентифицируют учетные записи.
-- [pkg_admin.pkb](sql/05_packages/pkg_admin.pkb) разрешает авторам добавлять материалы, создает тесты и вопросы, валидирует публикацию и выполняет защищенное администраторское удаление.
-- [pkg_testing.pkb](sql/05_packages/pkg_testing.pkb) создает попытки, принимает ответы, проверяет их и завершает тест.
-- [trg_audit.sql](sql/04_triggers/trg_audit.sql) и остальные триггеры контролируют изменения и журналируют события.
-- [01_views.sql](sql/06_views/01_views.sql) предоставляет историю, детализацию, статистику и рейтинг.
-
-## Сборка EXE
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\build\build_exe.ps1 -Python .\.venv\Scripts\python.exe
-```
-
-Сценарий устанавливает `oracledb` и `PyInstaller`, затем создает `dist\OracleQuizPlatform.exe`.
-
-Проверка соединения у собранного EXE без открытия окон:
-
-```powershell
-.\dist\OracleQuizPlatform.exe --connection-check "localhost:1521/FREEPDB1" "quiz_app" "QuizSchema2026" "admin" "Admin123!"
-$LASTEXITCODE
-```
-
-Код `0` означает, что упакованный клиент подключился к Oracle и выполнил вход пользователя приложения.
+- [01_project_completion_report.md](docs/01_project_completion_report.md)
+- [02_database_logic_map.md](docs/02_database_logic_map.md)
+- [03_validation_and_demo_scenarios.md](docs/03_validation_and_demo_scenarios.md)
+- [04_role_matrix_and_permissions.md](docs/04_role_matrix_and_permissions.md)
+- [05_release_notes.md](docs/05_release_notes.md)
