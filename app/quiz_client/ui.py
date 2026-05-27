@@ -39,6 +39,7 @@ class QuizApplication(tk.Tk):
         self.active_header = None
         self.remaining_seconds = None
         self.timer_job = None
+        self.connected_dsn = None
         self.show_connection()
 
     def clear_page(self):
@@ -78,8 +79,8 @@ class QuizApplication(tk.Tk):
     def show_connection(self):
         self.clear_page()
         self.heading(
-            "Oracle Quiz",
-            "Платформа тестирования с серверной логикой Oracle.",
+            "Шаг 1. Подключение Oracle",
+            "Укажите технические данные схемы. После подключения откроется обычный экран входа пользователей.",
             with_navigation=False,
         )
         settings = load_settings()
@@ -110,72 +111,107 @@ class QuizApplication(tk.Tk):
         def connect():
             try:
                 self.gateway.connect(dsn.get().strip(), schema_user.get().strip(), schema_password.get())
+                self.connected_dsn = dsn.get().strip()
                 save_settings(ConnectionSettings(dsn.get().strip(), schema_user.get().strip()))
-                self.show_auth()
+                self.show_login_page()
             except Exception as exc:
                 self.report_error(exc)
 
         ttk.Button(form, text="Подключиться", style="Primary.TButton", command=connect).grid(row=5, column=0, columnspan=2, sticky="w")
 
     def show_auth(self):
-        self.clear_page()
-        self.heading("Добро пожаловать", "Войдите, чтобы пройти тест, или создайте учетную запись участника.", with_navigation=False)
-        columns = ttk.Frame(self.page, style="App.TFrame")
-        columns.pack(fill="both", expand=True)
-        login_outer, login = self.panel(columns, padding=25)
-        login_outer.pack(side="left", fill="both", expand=True, padx=(0, 10))
-        register_outer, register = self.panel(columns, padding=25)
-        register_outer.pack(side="left", fill="both", expand=True, padx=(10, 0))
+        self.show_login_page()
 
-        ttk.Label(login, text="Войти", style="CardTitle.TLabel").pack(anchor="w", pady=(0, 18))
-        ttk.Label(login, text="Логин", style="Card.TLabel").pack(anchor="w")
-        login_value = ttk.Entry(login)
+    def auth_panel(self, title, subtitle):
+        self.clear_page()
+        connection_note = self.connected_dsn or load_settings().dsn
+        self.heading(
+            title,
+            f"{subtitle} Подключение к БД: {connection_note}",
+            with_navigation=False,
+        )
+        outer, form = self.panel(self.page, padding=28)
+        outer.pack(fill="x", padx=(250, 250), pady=(20, 0))
+        return form
+
+    def show_login_page(self, prefill_login=""):
+        form = self.auth_panel("Вход", "Шаг 2. Войдите под логином и паролем.")
+        ttk.Label(form, text="Логин", style="Card.TLabel").pack(anchor="w")
+        login_value = ttk.Entry(form)
         login_value.pack(fill="x", pady=(5, 14))
-        ttk.Label(login, text="Пароль", style="Card.TLabel").pack(anchor="w")
-        password_value = ttk.Entry(login, show="*")
+        if prefill_login:
+            login_value.insert(0, prefill_login)
+        ttk.Label(form, text="Пароль", style="Card.TLabel").pack(anchor="w")
+        password_value = ttk.Entry(form, show="*")
         password_value.pack(fill="x", pady=(5, 18))
 
-        def authenticate():
+        def authenticate(_event=None):
+            if not login_value.get().strip() or not password_value.get():
+                messagebox.showwarning("Вход", "Введите логин и пароль.")
+                return
             try:
-                self.user = self.gateway.authenticate(login_value.get(), password_value.get())
+                self.user = self.gateway.authenticate(login_value.get().strip(), password_value.get())
                 self.show_catalog()
             except Exception as exc:
                 self.report_error(exc)
 
-        ttk.Button(login, text="Войти", style="Primary.TButton", command=authenticate).pack(anchor="w")
+        ttk.Button(form, text="Войти", style="Primary.TButton", command=authenticate).pack(anchor="w")
         ttk.Label(
-            login,
+            form,
             text="Демонстрационный администратор\nadmin / Admin123!",
             style="Muted.TLabel",
             justify="left",
-        ).pack(anchor="w", pady=(25, 0))
+        ).pack(anchor="w", pady=(18, 10))
+        actions = ttk.Frame(form, style="Panel.TFrame")
+        actions.pack(fill="x")
+        ttk.Button(actions, text="Зарегистрироваться", style="Quiet.TButton", command=self.show_register_page).pack(side="left")
+        ttk.Button(actions, text="Изменить подключение Oracle", style="Quiet.TButton", command=self.show_connection).pack(side="right")
+        login_value.focus_set()
+        password_value.bind("<Return>", authenticate)
+        login_value.bind("<Return>", authenticate)
 
-        ttk.Label(register, text="Регистрация", style="CardTitle.TLabel").pack(anchor="w", pady=(0, 18))
-        ttk.Label(register, text="Имя", style="Card.TLabel").pack(anchor="w")
-        full_name = ttk.Entry(register)
+    def show_register_page(self):
+        form = self.auth_panel("Регистрация", "Создайте учетную запись участника.")
+        ttk.Label(form, text="Имя", style="Card.TLabel").pack(anchor="w")
+        full_name = ttk.Entry(form)
         full_name.pack(fill="x", pady=(5, 12))
-        ttk.Label(register, text="Логин", style="Card.TLabel").pack(anchor="w")
-        new_login = ttk.Entry(register)
+        ttk.Label(form, text="Логин", style="Card.TLabel").pack(anchor="w")
+        new_login = ttk.Entry(form)
         new_login.pack(fill="x", pady=(5, 12))
-        ttk.Label(register, text="Пароль (от 6 символов)", style="Card.TLabel").pack(anchor="w")
-        new_password = ttk.Entry(register, show="*")
-        new_password.pack(fill="x", pady=(5, 18))
+        ttk.Label(form, text="Пароль (от 6 символов)", style="Card.TLabel").pack(anchor="w")
+        new_password = ttk.Entry(form, show="*")
+        new_password.pack(fill="x", pady=(5, 12))
+        ttk.Label(form, text="Повторите пароль", style="Card.TLabel").pack(anchor="w")
+        confirm_password = ttk.Entry(form, show="*")
+        confirm_password.pack(fill="x", pady=(5, 18))
 
-        def register_user():
+        def register_user(_event=None):
+            if not full_name.get().strip() or not new_login.get().strip() or not new_password.get():
+                messagebox.showwarning("Регистрация", "Заполните имя, логин и пароль.")
+                return
+            if new_password.get() != confirm_password.get():
+                messagebox.showwarning("Регистрация", "Пароли не совпадают.")
+                return
             try:
-                self.gateway.register(new_login.get(), new_password.get(), full_name.get())
-                login_value.delete(0, "end")
-                login_value.insert(0, new_login.get())
+                self.gateway.register(new_login.get().strip(), new_password.get(), full_name.get().strip())
                 messagebox.showinfo("Регистрация", "Учетная запись создана. Теперь войдите с вашим паролем.")
+                self.show_login_page(new_login.get().strip())
             except Exception as exc:
                 self.report_error(exc)
 
-        ttk.Button(register, text="Создать учетную запись", style="Primary.TButton", command=register_user).pack(anchor="w")
+        ttk.Button(form, text="Создать учетную запись", style="Primary.TButton", command=register_user).pack(anchor="w")
+        actions = ttk.Frame(form, style="Panel.TFrame")
+        actions.pack(fill="x", pady=(10, 0))
+        ttk.Button(actions, text="У меня уже есть аккаунт", style="Quiet.TButton", command=self.show_login_page).pack(side="left")
+        ttk.Button(actions, text="Изменить подключение Oracle", style="Quiet.TButton", command=self.show_connection).pack(side="right")
+        full_name.focus_set()
+        confirm_password.bind("<Return>", register_user)
+        new_password.bind("<Return>", register_user)
 
     def logout(self):
         self.user = None
         self.active_attempt_id = None
-        self.show_auth()
+        self.show_login_page()
 
     def show_catalog(self):
         self.clear_page()
@@ -678,13 +714,19 @@ class QuizApplication(tk.Tk):
         form_outer.pack(side="left", fill="both", expand=True, padx=(0, 7))
         list_outer, listing = self.panel(tab, padding=16)
         list_outer.pack(side="left", fill="both", expand=True, padx=(7, 0))
-        ttk.Label(form, text="Добавить вопрос", style="CardTitle.TLabel").pack(anchor="w", pady=(0, 9))
+        editor_title = ttk.Label(form, text="Новый вопрос", style="CardTitle.TLabel")
+        editor_title.pack(anchor="w")
+        editor_note = ttk.Label(form, text="Заполните поля и добавьте вопрос в выбранный черновик.", style="Muted.TLabel")
+        editor_note.pack(anchor="w", pady=(3, 10))
         drafts = [row for row in self.gateway.admin_quizzes(self.user) if row["status"] == "DRAFT"]
         quiz_values = [f"{row['quiz_id']} | {row['title']}" for row in drafts]
         draft_topics = {row["quiz_id"]: row["topic_id"] for row in drafts}
         types, difficulties = self.gateway.dictionaries()
         type_values = [f"{row['type_code']} | {row['type_name']}" for row in types]
         diff_values = [f"{row['difficulty_code']} | {row['difficulty_name']}" for row in difficulties]
+        type_modes = {row["type_code"]: row["answer_mode"] for row in types}
+        editor_state = {"question_id": None}
+        questions_by_id = {}
         ttk.Label(form, text="Черновик теста", style="Muted.TLabel").pack(anchor="w")
         q_quiz = ttk.Combobox(form, values=quiz_values, state="readonly")
         q_quiz.pack(fill="x", pady=(3, 7))
@@ -709,28 +751,40 @@ class QuizApplication(tk.Tk):
         ttk.Label(form, text="Текст вопроса", style="Muted.TLabel").pack(anchor="w")
         q_text = ttk.Entry(form)
         q_text.pack(fill="x", pady=(3, 7))
-        scoring = ttk.Frame(form, style="Panel.TFrame")
-        scoring.pack(fill="x", pady=(0, 7))
-        expected_field = ttk.Frame(scoring, style="Panel.TFrame")
-        expected_field.pack(side="left", fill="x", expand=True, padx=(0, 5))
-        points_field = ttk.Frame(scoring, style="Panel.TFrame")
+        details = ttk.Frame(form, style="Panel.TFrame")
+        details.pack(fill="x", pady=(0, 7))
+        explanation_field = ttk.Frame(details, style="Panel.TFrame")
+        explanation_field.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        points_field = ttk.Frame(details, style="Panel.TFrame")
         points_field.pack(side="left", padx=(5, 0))
-        ttk.Label(expected_field, text="Эталонный ответ для текста/числа", style="Muted.TLabel").pack(anchor="w")
-        expected = ttk.Entry(expected_field)
-        expected.pack(fill="x", pady=(3, 0))
+        ttk.Label(explanation_field, text="Пояснение после проверки", style="Muted.TLabel").pack(anchor="w")
+        explanation = ttk.Entry(explanation_field)
+        explanation.pack(fill="x", pady=(3, 0))
         ttk.Label(points_field, text="Баллы", style="Muted.TLabel").pack(anchor="w")
         points = ttk.Entry(points_field, width=10)
         points.insert(0, "1")
         points.pack(pady=(3, 0))
-        ttk.Label(form, text="Пояснение после проверки", style="Muted.TLabel").pack(anchor="w")
-        explanation = ttk.Entry(form)
-        explanation.pack(fill="x", pady=(3, 7))
-        ttk.Label(form, text="Варианты выбора: один вариант в каждой строке", style="Muted.TLabel").pack(anchor="w", pady=(3, 2))
-        options = tk.Text(form, height=3, bg="#ffffff", relief="solid", bd=1, font=("Segoe UI", 9))
-        options.pack(fill="x", pady=3)
-        ttk.Label(form, text="Номера правильных вариантов (например, 1 или 1,3)", style="Muted.TLabel").pack(anchor="w", pady=(3, 2))
-        correct = ttk.Entry(form)
-        correct.pack(fill="x", pady=3)
+
+        answer_area = ttk.Frame(form, style="Panel.TFrame")
+        answer_area.pack(fill="x", pady=(1, 5))
+        expected_field = ttk.Frame(answer_area, style="Panel.TFrame")
+        expected_label = ttk.Label(expected_field, text="Правильный ответ", style="Muted.TLabel")
+        expected_label.pack(anchor="w")
+        expected = ttk.Entry(expected_field)
+        expected.pack(fill="x", pady=(3, 0))
+        option_field = ttk.Frame(answer_area, style="Panel.TFrame")
+        options_label = ttk.Label(option_field, text="Варианты: один вариант в каждой строке", style="Muted.TLabel")
+        options_label.pack(anchor="w")
+        options = tk.Text(option_field, height=3, bg="#ffffff", relief="solid", bd=1, font=("Segoe UI", 9))
+        options.pack(fill="x", pady=(3, 5))
+        ttk.Label(option_field, text="Номера правильных вариантов (например, 1 или 1,3)", style="Muted.TLabel").pack(anchor="w")
+        correct = ttk.Entry(option_field)
+        correct.pack(fill="x", pady=(3, 0))
+        boolean_field = ttk.Frame(answer_area, style="Panel.TFrame")
+        ttk.Label(boolean_field, text="Правильный ответ", style="Muted.TLabel").pack(anchor="w")
+        boolean_answer = ttk.Combobox(boolean_field, values=["Верно", "Неверно"], state="readonly")
+        boolean_answer.set("Верно")
+        boolean_answer.pack(fill="x", pady=(3, 0))
 
         ttk.Label(listing, text="Вопросы выбранного черновика", style="CardTitle.TLabel").pack(anchor="w", pady=(0, 9))
         question_tree = ttk.Treeview(listing, columns=("number", "text", "type", "points"), show="headings")
@@ -739,9 +793,59 @@ class QuizApplication(tk.Tk):
             question_tree.column(name, width=width)
         question_tree.pack(fill="both", expand=True)
 
+        def type_code():
+            return q_type.get().split("|", 1)[0].strip() if q_type.get() else ""
+
+        def set_combobox_value(box, values, key):
+            for value in values:
+                if value.startswith(f"{key} |"):
+                    box.set(value)
+                    return
+
+        def update_answer_fields(_event=None):
+            expected_field.pack_forget()
+            option_field.pack_forget()
+            boolean_field.pack_forget()
+            code = type_code()
+            if code == "BOOLEAN":
+                boolean_field.pack(fill="x")
+            elif type_modes.get(code) == "OPTIONS":
+                options_label.configure(text="Варианты: один вариант в каждой строке")
+                option_field.pack(fill="x")
+            else:
+                expected_labels = {
+                    "TEXT": "Правильный текстовый ответ",
+                    "NUMBER": "Правильное число",
+                    "ORDERING": "Правильный порядок (через ;)",
+                }
+                expected_label.configure(text=expected_labels.get(code, "Правильный ответ"))
+                expected_field.pack(fill="x")
+
+        def clear_fields():
+            editor_state["question_id"] = None
+            editor_title.configure(text="Новый вопрос")
+            editor_note.configure(text="Заполните поля и добавьте вопрос в выбранный черновик.")
+            save_button.configure(text="Добавить вопрос")
+            q_text.delete(0, "end")
+            expected.delete(0, "end")
+            explanation.delete(0, "end")
+            points.delete(0, "end")
+            points.insert(0, "1")
+            options.delete("1.0", "end")
+            correct.delete(0, "end")
+            boolean_answer.set("Верно")
+            if type_values:
+                q_type.set(type_values[0])
+            if diff_values:
+                q_diff.set(diff_values[0])
+            update_answer_fields()
+            question_tree.selection_remove(*question_tree.selection())
+
         def refresh_question_context(_event=None):
+            clear_fields()
             for item in question_tree.get_children():
                 question_tree.delete(item)
+            questions_by_id.clear()
             if not q_quiz.get():
                 q_category["values"] = []
                 q_category.set("")
@@ -753,35 +857,75 @@ class QuizApplication(tk.Tk):
             q_category["values"] = category_values
             q_category.set(category_values[0] if category_values else "")
             for row in self.gateway.admin_questions(quiz_id):
+                questions_by_id[row["question_id"]] = row
                 question_tree.insert("", "end", iid=str(row["question_id"]), values=(row["seq_no"], row["question_text"], row["type_code"], row["points"]))
 
-        def add_question():
+        def load_question(_event=None):
+            if not question_tree.selection():
+                return
+            question_id = int(question_tree.selection()[0])
+            question = questions_by_id[question_id]
+            editor_state["question_id"] = question_id
+            editor_title.configure(text="Редактирование вопроса")
+            editor_note.configure(text="Изменения применяются к выбранному вопросу черновика.")
+            save_button.configure(text="Сохранить изменения")
+            set_combobox_value(q_category, list(q_category["values"]), question["category_id"])
+            set_combobox_value(q_type, type_values, question["type_code"])
+            set_combobox_value(q_diff, diff_values, question["difficulty_code"])
+            q_text.delete(0, "end")
+            q_text.insert(0, question["question_text"] or "")
+            expected.delete(0, "end")
+            expected.insert(0, question["expected_answer"] or "")
+            explanation.delete(0, "end")
+            explanation.insert(0, question["explanation"] or "")
+            points.delete(0, "end")
+            points.insert(0, str(question["points"]))
+            options.delete("1.0", "end")
+            correct.delete(0, "end")
+            stored_options = self.gateway.admin_question_options(question_id)
+            options.insert("1.0", "\n".join(row["option_text"] for row in stored_options))
+            correct.insert(0, ",".join(str(row["seq_no"]) for row in stored_options if row["is_correct"] == 1))
+            if question["type_code"] == "BOOLEAN":
+                correct_option = next((row["option_text"] for row in stored_options if row["is_correct"] == 1), "Верно")
+                boolean_answer.set(correct_option)
+            update_answer_fields()
+
+        def save_question():
             if not q_quiz.get() or not q_category.get() or not q_text.get().strip():
                 messagebox.showwarning("Вопрос", "Выберите черновик и категорию, затем введите текст вопроса.")
                 return
             try:
-                type_code = q_type.get().split("|", 1)[0].strip()
+                code = type_code()
                 options_list = []
-                if type_code in ("SINGLE_CHOICE", "MULTIPLE_CHOICE", "BOOLEAN"):
+                if code == "BOOLEAN":
+                    options_list = [
+                        ("Верно", int(boolean_answer.get() == "Верно")),
+                        ("Неверно", int(boolean_answer.get() == "Неверно")),
+                    ]
+                elif type_modes.get(code) == "OPTIONS":
                     raw_options = [line.strip() for line in options.get("1.0", "end").splitlines() if line.strip()]
                     indexes = {int(value.strip()) for value in correct.get().split(",") if value.strip().isdigit()}
                     if not raw_options or not indexes:
                         messagebox.showwarning("Вопрос", "Для вопроса с выбором заполните варианты и номер правильного ответа.")
                         return
                     options_list = [(text, int(index in indexes)) for index, text in enumerate(raw_options, 1)]
-                self.gateway.create_question(
+                fields = (
                     self.user.user_id,
-                    int(q_quiz.get().split("|", 1)[0]),
                     int(q_category.get().split("|", 1)[0]),
-                    type_code,
+                    code,
                     q_diff.get().split("|", 1)[0].strip(),
                     q_text.get().strip(),
-                    expected.get().strip() if type_code not in ("SINGLE_CHOICE", "MULTIPLE_CHOICE", "BOOLEAN") else "",
+                    expected.get().strip() if type_modes.get(code) != "OPTIONS" else "",
                     explanation.get().strip(),
                     float(points.get()),
                     options_list,
                 )
-                messagebox.showinfo("Вопрос", "Вопрос добавлен в черновик.")
+                if editor_state["question_id"] is None:
+                    self.gateway.create_question(fields[0], int(q_quiz.get().split("|", 1)[0]), *fields[1:])
+                    messagebox.showinfo("Вопрос", "Вопрос добавлен в черновик.")
+                else:
+                    self.gateway.update_question(fields[0], editor_state["question_id"], *fields[1:])
+                    messagebox.showinfo("Вопрос", "Изменения вопроса сохранены.")
                 self.show_admin("Вопросы")
             except Exception as exc:
                 self.report_error(exc)
@@ -798,10 +942,17 @@ class QuizApplication(tk.Tk):
             except Exception as exc:
                 self.report_error(exc)
 
-        ttk.Button(form, text="Добавить вопрос", style="Primary.TButton", command=add_question).pack(anchor="w", pady=(8, 0))
+        form_actions = ttk.Frame(form, style="Panel.TFrame")
+        form_actions.pack(fill="x", pady=(8, 0))
+        save_button = ttk.Button(form_actions, text="Добавить вопрос", style="Primary.TButton", command=save_question)
+        save_button.pack(side="left")
+        ttk.Button(form_actions, text="Очистить форму", style="Quiet.TButton", command=clear_fields).pack(side="left", padx=(8, 0))
         if self.user.role_code == "ADMIN":
             ttk.Button(listing, text="Удалить выбранный вопрос", style="Danger.TButton", command=delete_question).pack(anchor="e", pady=(10, 0))
         q_quiz.bind("<<ComboboxSelected>>", refresh_question_context)
+        q_type.bind("<<ComboboxSelected>>", update_answer_fields)
+        question_tree.bind("<<TreeviewSelect>>", load_question)
+        update_answer_fields()
         refresh_question_context()
 
     def build_admin_publication(self, notebook):

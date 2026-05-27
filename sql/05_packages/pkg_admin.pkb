@@ -140,6 +140,52 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
         RETURNING question_id INTO p_question_id;
     END;
 
+    PROCEDURE update_question (
+        p_actor_id IN NUMBER,
+        p_question_id IN NUMBER,
+        p_category_id IN NUMBER,
+        p_type_code IN VARCHAR2,
+        p_difficulty_code IN VARCHAR2,
+        p_question_text IN VARCHAR2,
+        p_expected_answer IN VARCHAR2,
+        p_explanation IN VARCHAR2,
+        p_points IN NUMBER
+    ) IS
+        v_quiz_id NUMBER;
+        v_count NUMBER;
+    BEGIN
+        SELECT quiz_id
+          INTO v_quiz_id
+          FROM questions
+         WHERE question_id = p_question_id;
+        require_quiz_owner(p_actor_id, v_quiz_id);
+
+        SELECT COUNT(*)
+          INTO v_count
+          FROM quizzes q
+          JOIN categories c ON c.topic_id = q.topic_id
+         WHERE q.quiz_id = v_quiz_id
+           AND c.category_id = p_category_id;
+        IF v_count = 0 THEN
+            RAISE_APPLICATION_ERROR(-20106, 'Категория должна относиться к тематике теста.');
+        END IF;
+
+        UPDATE questions
+           SET category_id = p_category_id,
+               type_code = UPPER(p_type_code),
+               difficulty_code = UPPER(p_difficulty_code),
+               question_text = TRIM(p_question_text),
+               expected_answer = TRIM(p_expected_answer),
+               explanation = TRIM(p_explanation),
+               points = p_points
+         WHERE question_id = p_question_id;
+
+        DELETE FROM question_options WHERE question_id = p_question_id;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20123, 'Вопрос не найден.');
+    END;
+
     PROCEDURE add_option (
         p_actor_id IN NUMBER,
         p_question_id IN NUMBER,

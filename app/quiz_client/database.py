@@ -183,12 +183,24 @@ class OracleGateway:
     def admin_questions(self, quiz_id: int):
         return self._rows(
             """
-            SELECT q.question_id, q.seq_no, q.question_text, q.type_code, q.points
+            SELECT q.question_id, q.seq_no, q.category_id, q.question_text, q.type_code,
+                   q.difficulty_code, q.expected_answer, q.explanation, q.points
               FROM questions q
              WHERE q.quiz_id = :quiz_id
              ORDER BY q.seq_no
             """,
             {"quiz_id": quiz_id},
+        )
+
+    def admin_question_options(self, question_id: int):
+        return self._rows(
+            """
+            SELECT option_id, seq_no, option_text, is_correct
+              FROM question_options
+             WHERE question_id = :question_id
+             ORDER BY seq_no
+            """,
+            {"question_id": question_id},
         )
 
     def dictionaries(self):
@@ -235,6 +247,21 @@ class OracleGateway:
                     cursor.callproc("pkg_admin.add_option", [actor_id, created_id, option_text, is_correct, option_id])
             self.connection.commit()
             return created_id
+        except Exception:
+            self.connection.rollback()
+            raise
+
+    def update_question(self, actor_id: int, question_id: int, category_id: int, type_code: str, difficulty_code: str, text: str, expected: str, explanation: str, points: float, options):
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.callproc(
+                    "pkg_admin.update_question",
+                    [actor_id, question_id, category_id, type_code, difficulty_code, text, expected or None, explanation or None, points],
+                )
+                for option_text, is_correct in options:
+                    option_id = cursor.var(int)
+                    cursor.callproc("pkg_admin.add_option", [actor_id, question_id, option_text, is_correct, option_id])
+            self.connection.commit()
         except Exception:
             self.connection.rollback()
             raise

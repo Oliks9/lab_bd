@@ -37,6 +37,18 @@ CREATE OR REPLACE PACKAGE pkg_admin AS
         p_question_id OUT NUMBER
     );
 
+    PROCEDURE update_question (
+        p_actor_id IN NUMBER,
+        p_question_id IN NUMBER,
+        p_category_id IN NUMBER,
+        p_type_code IN VARCHAR2,
+        p_difficulty_code IN VARCHAR2,
+        p_question_text IN VARCHAR2,
+        p_expected_answer IN VARCHAR2,
+        p_explanation IN VARCHAR2,
+        p_points IN NUMBER
+    );
+
     PROCEDURE add_option (
         p_actor_id IN NUMBER,
         p_question_id IN NUMBER,

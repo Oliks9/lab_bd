@@ -7,6 +7,7 @@ DECLARE
     v_quiz_id NUMBER;
     v_demo_quiz_id NUMBER;
     v_question_id NUMBER;
+    v_option_id NUMBER;
     v_attempt_id NUMBER;
     v_name VARCHAR2(200);
     v_role VARCHAR2(20);
@@ -32,6 +33,20 @@ BEGIN
         v_author_id, v_quiz_id, v_category_id, 'TEXT', 'EASY',
         'Temporary question', 'answer', NULL, 1, v_question_id
     );
+    pkg_admin.update_question(
+        v_author_id, v_question_id, v_category_id, 'SINGLE_CHOICE', 'MEDIUM',
+        'Edited question', NULL, 'Edited explanation', 2
+    );
+    pkg_admin.add_option(v_author_id, v_question_id, 'Correct', 1, v_option_id);
+    pkg_admin.add_option(v_author_id, v_question_id, 'Wrong', 0, v_option_id);
+    SELECT COUNT(*) INTO v_count
+      FROM questions q
+      JOIN question_options qo ON qo.question_id = q.question_id
+     WHERE q.question_id = v_question_id
+       AND q.question_text = 'Edited question';
+    IF v_count <> 2 THEN
+        RAISE_APPLICATION_ERROR(-20990, 'AUTHOR could not edit a draft question and replace its options.');
+    END IF;
     pkg_admin.delete_question(v_admin_id, v_question_id);
     pkg_admin.delete_category(v_admin_id, v_category_id);
     pkg_admin.delete_quiz(v_admin_id, v_quiz_id);
@@ -52,7 +67,7 @@ BEGIN
         RAISE_APPLICATION_ERROR(-20991, 'ADMIN could not reset all user attempts.');
     END IF;
 
-    DBMS_OUTPUT.PUT_LINE('Content management smoke test successful. AUTHOR category creation, ADMIN deletion and progress reset verified.');
+    DBMS_OUTPUT.PUT_LINE('Content management smoke test successful. AUTHOR editing, ADMIN deletion and progress reset verified.');
     ROLLBACK TO before_content_management_test;
 END;
 /
