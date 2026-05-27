@@ -12,6 +12,10 @@ CREATE OR REPLACE PACKAGE pkg_testing AS
         p_text_answer IN VARCHAR2
     );
 
+    PROCEDURE expire_question (
+        p_attempt_id IN NUMBER
+    );
+
     PROCEDURE finish_attempt (
         p_attempt_id IN NUMBER
     );

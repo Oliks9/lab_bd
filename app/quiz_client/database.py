@@ -139,6 +139,11 @@ class OracleGateway:
             cursor.callproc("pkg_testing.submit_answer", [attempt_id, question_id, selected_ids, text_answer])
         self.connection.commit()
 
+    def expire_question(self, attempt_id: int) -> None:
+        with self.connection.cursor() as cursor:
+            cursor.callproc("pkg_testing.expire_question", [attempt_id])
+        self.connection.commit()
+
     def finish_attempt(self, attempt_id: int) -> None:
         with self.connection.cursor() as cursor:
             cursor.callproc("pkg_testing.finish_attempt", [attempt_id])

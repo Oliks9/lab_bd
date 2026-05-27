@@ -1,4 +1,28 @@
 CREATE OR REPLACE PACKAGE BODY pkg_testing AS
+    PROCEDURE advance_active_question (
+        p_attempt_id IN NUMBER,
+        p_active_order IN NUMBER
+    ) IS
+        v_total_questions NUMBER;
+    BEGIN
+        SELECT COUNT(*)
+          INTO v_total_questions
+          FROM attempt_questions
+         WHERE attempt_id = p_attempt_id;
+
+        IF p_active_order < v_total_questions THEN
+            UPDATE attempts
+               SET active_question_order = p_active_order + 1,
+                   question_started_at = SYSTIMESTAMP
+             WHERE attempt_id = p_attempt_id;
+        ELSE
+            UPDATE attempts
+               SET active_question_order = v_total_questions + 1,
+                   question_started_at = NULL
+             WHERE attempt_id = p_attempt_id;
+        END IF;
+    END;
+
     PROCEDURE start_attempt (
         p_user_id IN NUMBER,
         p_quiz_id IN NUMBER,
@@ -73,7 +97,6 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
         v_expected questions.expected_answer%TYPE;
         v_points questions.points%TYPE;
         v_answer_id NUMBER;
-        v_total_questions NUMBER := 0;
         v_clean_ids VARCHAR2(4000) := REPLACE(TRIM(p_selected_option_ids), ' ', '');
         v_selected_count NUMBER := 0;
         v_selected_correct NUMBER := 0;
@@ -199,26 +222,40 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
          WHERE answer_id = v_answer_id;
 
         IF v_timer_mode = 'QUESTION' THEN
-            SELECT COUNT(*)
-              INTO v_total_questions
-              FROM attempt_questions
-             WHERE attempt_id = p_attempt_id;
-
-            IF v_active_order < v_total_questions THEN
-                UPDATE attempts
-                   SET active_question_order = v_active_order + 1,
-                       question_started_at = SYSTIMESTAMP
-                 WHERE attempt_id = p_attempt_id;
-            ELSE
-                UPDATE attempts
-                   SET active_question_order = v_total_questions + 1,
-                       question_started_at = NULL
-                 WHERE attempt_id = p_attempt_id;
-            END IF;
+            advance_active_question(p_attempt_id, v_active_order);
         END IF;
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
             RAISE_APPLICATION_ERROR(-20206, 'Вопрос не входит в текущую попытку.');
+    END;
+
+    PROCEDURE expire_question (
+        p_attempt_id IN NUMBER
+    ) IS
+        v_status attempts.status%TYPE;
+        v_timer_mode attempts.timer_mode%TYPE;
+        v_active_order attempts.active_question_order%TYPE;
+    BEGIN
+        SELECT status, timer_mode, active_question_order
+          INTO v_status, v_timer_mode, v_active_order
+          FROM attempts
+         WHERE attempt_id = p_attempt_id
+         FOR UPDATE OF status, active_question_order, question_started_at;
+
+        IF v_status <> 'IN_PROGRESS' THEN
+            RETURN;
+        END IF;
+        IF v_timer_mode <> 'QUESTION' THEN
+            RAISE_APPLICATION_ERROR(-20210, 'Автопереход доступен только в режиме таймера по вопросам.');
+        END IF;
+        IF v_active_order IS NULL THEN
+            RETURN;
+        END IF;
+
+        advance_active_question(p_attempt_id, v_active_order);
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20207, 'Попытка не найдена.');
     END;
 
     PROCEDURE finish_attempt (

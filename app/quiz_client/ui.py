@@ -439,8 +439,11 @@ class QuizApplication(tk.Tk):
             except Exception as exc:
                 raw = str(exc)
                 if "ORA-20203" in raw or "-20203" in raw:
-                    messagebox.showinfo("Время", "Лимит времени истек. Попытка будет завершена.")
-                    self.finish_active_attempt()
+                    if (self.active_header or {}).get("timer_mode") == "QUESTION":
+                        self.handle_question_timeout()
+                    else:
+                        messagebox.showinfo("Время", "Лимит времени истек. Попытка будет завершена.")
+                        self.finish_active_attempt()
                     return
                 self.report_error(exc)
 
@@ -461,13 +464,28 @@ class QuizApplication(tk.Tk):
         label.configure(text=f"{self.timer_caption}: {minutes:02d}:{remainder:02d}")
         if seconds <= 0:
             if (self.active_header or {}).get("timer_mode") == "QUESTION":
-                messagebox.showinfo("Время", "Время на текущий вопрос истекло. Попытка будет завершена.")
+                self.handle_question_timeout()
             else:
                 messagebox.showinfo("Время", "Время теста истекло. Попытка будет завершена.")
-            self.finish_active_attempt()
+                self.finish_active_attempt()
             return
         self.remaining_seconds -= 1
         self.timer_job = self.after(1000, lambda: self.update_timer(label))
+
+    def handle_question_timeout(self):
+        if self.active_attempt_id is None:
+            return
+        try:
+            self.gateway.expire_question(self.active_attempt_id)
+        except Exception as exc:
+            self.report_error(exc)
+            self.finish_active_attempt()
+            return
+        self.active_index += 1
+        if self.active_index >= len(self.active_questions):
+            self.finish_active_attempt()
+        else:
+            self.show_question()
 
     def cancel_timer(self):
         if self.timer_job:
@@ -518,22 +536,30 @@ class QuizApplication(tk.Tk):
         outer, body = self.panel(self.page, padding=15)
         outer.pack(fill="both", expand=True)
         show_feedback = int(header["show_feedback"]) == 1
-        columns = ("number", "status", "question", "given", "correct")
+        columns = ("number", "status", "question", "given", "correct", "explanation")
         tree = ttk.Treeview(body, columns=columns, show="headings")
         for name, title, width in (
             ("number", "#", 45),
             ("status", "Результат", 100),
-            ("question", "Вопрос", 350),
-            ("given", "Ваш ответ", 250),
-            ("correct", "Правильный ответ" if show_feedback else "Обратная связь", 250),
+            ("question", "Вопрос", 300),
+            ("given", "Ваш ответ", 200),
+            ("correct", "Правильный ответ", 220),
+            ("explanation", "Пояснение автора", 320),
         ):
             tree.heading(name, text=title)
             tree.column(name, width=width)
         tree.pack(fill="both", expand=True)
         for row in details:
             status = "Верно" if row["is_correct"] == 1 else "Ошибка" if row["is_correct"] == 0 else "Пропущено"
-            correct = row["correct_answer"] if show_feedback else "Скрыто настройками теста"
-            tree.insert("", "end", values=(row["display_order"], status, row["question_text"], row["given_answer"] or "-", correct or "-"))
+            correct = (row["correct_answer"] or "-") if show_feedback else "Скрыто настройками теста"
+            explanation = (
+                row["explanation"] or "Пояснение не добавлено автором."
+            ) if show_feedback else "Скрыто настройками теста"
+            tree.insert(
+                "",
+                "end",
+                values=(row["display_order"], status, row["question_text"], row["given_answer"] or "-", correct, explanation),
+            )
 
     def show_history(self):
         self.clear_page()
