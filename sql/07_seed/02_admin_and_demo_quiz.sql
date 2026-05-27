@@ -17,7 +17,7 @@ BEGIN
     pkg_admin.create_category(v_admin_id, v_topic_id, 'Oracle PL/SQL', v_category_id);
     pkg_admin.create_quiz(
         v_admin_id, v_topic_id, 'Oracle: основы серверной логики',
-        'Демонстрационный тест с разными форматами ответа.', 'QUIZ', 20, 1, 'PUBLIC', v_quiz_id
+        'Демонстрационный тест с разными форматами ответа.', 'QUIZ', 20, NULL, 1, 'PUBLIC', v_quiz_id
     );
 
     pkg_admin.add_question(

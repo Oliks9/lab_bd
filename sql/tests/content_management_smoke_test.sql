@@ -28,13 +28,18 @@ BEGIN
         RAISE_APPLICATION_ERROR(-20993, 'AUTHOR could not create a category.');
     END IF;
 
-    pkg_admin.create_quiz(v_author_id, v_topic_id, 'Temporary draft', NULL, 'QUIZ', 10, 1, 'PUBLIC', v_quiz_id);
+    pkg_admin.create_quiz(v_author_id, v_topic_id, 'Temporary draft', NULL, 'QUIZ', 10, NULL, 1, 'PUBLIC', v_quiz_id);
     pkg_admin.set_quiz_feedback(v_author_id, v_quiz_id, 0);
     SELECT show_feedback INTO v_count FROM quizzes WHERE quiz_id = v_quiz_id;
     IF v_count <> 0 THEN
         RAISE_APPLICATION_ERROR(-20994, 'Could not update show_feedback for draft quiz.');
     END IF;
     pkg_admin.set_quiz_feedback(v_author_id, v_quiz_id, 1);
+    pkg_admin.set_quiz_attempt_limit(v_author_id, v_quiz_id, 1);
+    SELECT attempt_limit INTO v_count FROM quizzes WHERE quiz_id = v_quiz_id;
+    IF v_count <> 1 THEN
+        RAISE_APPLICATION_ERROR(-20985, 'Could not update attempt_limit for draft quiz.');
+    END IF;
     pkg_admin.add_question(
         v_author_id, v_quiz_id, v_category_id, 'TEXT', 'EASY',
         'Temporary question', 'answer', NULL, 1, v_question_id
@@ -56,6 +61,15 @@ BEGIN
     pkg_admin.publish_quiz(v_author_id, v_quiz_id);
     pkg_testing.start_attempt(v_author_id, v_quiz_id, v_attempt_id);
     pkg_testing.finish_attempt(v_attempt_id);
+    BEGIN
+        pkg_testing.start_attempt(v_author_id, v_quiz_id, v_attempt_id);
+        RAISE_APPLICATION_ERROR(-20986, 'Attempt limit did not block second try.');
+    EXCEPTION
+        WHEN OTHERS THEN
+            IF SQLCODE != -20211 THEN
+                RAISE;
+            END IF;
+    END;
 
     pkg_admin.delete_question(v_author_id, v_question_id);
     SELECT max_points INTO v_count FROM attempts WHERE attempt_id = v_attempt_id;

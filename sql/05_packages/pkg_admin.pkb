@@ -101,23 +101,28 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
         p_description IN VARCHAR2,
         p_timer_mode IN VARCHAR2,
         p_duration_minutes IN NUMBER,
+        p_attempt_limit IN NUMBER,
         p_show_feedback IN NUMBER,
         p_access_mode IN VARCHAR2,
         p_quiz_id OUT NUMBER
     ) IS
         v_timer_mode VARCHAR2(15) := UPPER(TRIM(p_timer_mode));
+        v_attempt_limit NUMBER := p_attempt_limit;
     BEGIN
         require_editor(p_actor_id);
         IF v_timer_mode NOT IN ('QUIZ', 'QUESTION') THEN
             RAISE_APPLICATION_ERROR(-20124, 'Режим времени должен быть QUIZ или QUESTION.');
         END IF;
+        IF v_attempt_limit IS NOT NULL AND v_attempt_limit <= 0 THEN
+            RAISE_APPLICATION_ERROR(-20129, 'Лимит попыток должен быть положительным числом или NULL.');
+        END IF;
 
         INSERT INTO quizzes (
             topic_id, author_id, title, description, timer_mode, duration_minutes,
-            show_feedback, access_mode
+            attempt_limit, show_feedback, access_mode
         ) VALUES (
             p_topic_id, p_actor_id, TRIM(p_title), TRIM(p_description),
-            v_timer_mode, p_duration_minutes, p_show_feedback, UPPER(p_access_mode)
+            v_timer_mode, p_duration_minutes, v_attempt_limit, p_show_feedback, UPPER(p_access_mode)
         )
         RETURNING quiz_id INTO p_quiz_id;
     EXCEPTION
@@ -294,6 +299,26 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
            AND status = 'DRAFT';
         IF SQL%ROWCOUNT = 0 THEN
             RAISE_APPLICATION_ERROR(-20128, 'Настройка доступна только для черновика теста.');
+        END IF;
+    END;
+
+    PROCEDURE set_quiz_attempt_limit (
+        p_actor_id IN NUMBER,
+        p_quiz_id IN NUMBER,
+        p_attempt_limit IN NUMBER
+    ) IS
+    BEGIN
+        require_quiz_owner(p_actor_id, p_quiz_id);
+        IF p_attempt_limit IS NOT NULL AND p_attempt_limit <= 0 THEN
+            RAISE_APPLICATION_ERROR(-20130, 'Лимит попыток должен быть положительным числом или NULL.');
+        END IF;
+
+        UPDATE quizzes
+           SET attempt_limit = p_attempt_limit
+         WHERE quiz_id = p_quiz_id
+           AND status = 'DRAFT';
+        IF SQL%ROWCOUNT = 0 THEN
+            RAISE_APPLICATION_ERROR(-20131, 'Лимит попыток можно менять только у черновика.');
         END IF;
     END;
 

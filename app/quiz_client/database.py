@@ -59,7 +59,7 @@ class OracleGateway:
         return self._rows(
             """
             SELECT quiz_id, topic_title, quiz_title, description, timer_mode, duration_minutes,
-                   question_count, max_points, author_name, access_mode, status
+                   question_count, max_points, author_name, access_mode, status, attempt_limit
               FROM v_quiz_catalog
              WHERE fn_can_access_quiz(:user_id, quiz_id) = 1
                AND (:topic_id IS NULL OR topic_id = :topic_id)
@@ -197,7 +197,7 @@ class OracleGateway:
         return self._rows(
             """
             SELECT q.quiz_id, q.topic_id, t.title AS topic_title, q.title, q.status, q.access_mode,
-                   q.timer_mode, q.duration_minutes, q.show_feedback
+                   q.timer_mode, q.duration_minutes, q.show_feedback, q.attempt_limit
               FROM quizzes q JOIN topics t ON t.topic_id = q.topic_id
              WHERE :role = 'ADMIN' OR q.author_id = :actor_id
              ORDER BY q.created_at DESC
@@ -256,6 +256,7 @@ class OracleGateway:
         description: str,
         timer_mode: str,
         duration: int,
+        attempt_limit: int | None,
         show_feedback: int,
         access_mode: str,
     ) -> int:
@@ -263,7 +264,7 @@ class OracleGateway:
             value = cursor.var(int)
             cursor.callproc(
                 "pkg_admin.create_quiz",
-                [actor_id, topic_id, title, description, timer_mode, duration, show_feedback, access_mode, value],
+                [actor_id, topic_id, title, description, timer_mode, duration, attempt_limit, show_feedback, access_mode, value],
             )
         self.connection.commit()
         return int(value.getvalue())
@@ -309,6 +310,11 @@ class OracleGateway:
     def set_quiz_feedback(self, actor_id: int, quiz_id: int, show_feedback: int) -> None:
         with self.connection.cursor() as cursor:
             cursor.callproc("pkg_admin.set_quiz_feedback", [actor_id, quiz_id, show_feedback])
+        self.connection.commit()
+
+    def set_quiz_attempt_limit(self, actor_id: int, quiz_id: int, attempt_limit: int | None) -> None:
+        with self.connection.cursor() as cursor:
+            cursor.callproc("pkg_admin.set_quiz_attempt_limit", [actor_id, quiz_id, attempt_limit])
         self.connection.commit()
 
     def grant_access(self, actor_id: int, quiz_id: int, user_id: int) -> None:

@@ -20,6 +20,7 @@ CREATE OR REPLACE PACKAGE pkg_admin AS
         p_description IN VARCHAR2,
         p_timer_mode IN VARCHAR2,
         p_duration_minutes IN NUMBER,
+        p_attempt_limit IN NUMBER,
         p_show_feedback IN NUMBER,
         p_access_mode IN VARCHAR2,
         p_quiz_id OUT NUMBER
@@ -67,6 +68,12 @@ CREATE OR REPLACE PACKAGE pkg_admin AS
         p_actor_id IN NUMBER,
         p_quiz_id IN NUMBER,
         p_show_feedback IN NUMBER
+    );
+
+    PROCEDURE set_quiz_attempt_limit (
+        p_actor_id IN NUMBER,
+        p_quiz_id IN NUMBER,
+        p_attempt_limit IN NUMBER
     );
 
     PROCEDURE grant_access (

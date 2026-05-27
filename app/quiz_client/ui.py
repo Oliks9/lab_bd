@@ -150,6 +150,23 @@ class QuizApplication(tk.Tk):
     def tone_for_access(self, access_mode: str) -> str:
         return "brand" if access_mode == "RESTRICTED" else "default"
 
+    def format_attempt_limit(self, attempt_limit) -> str:
+        if attempt_limit in (None, "", 0):
+            return "Без лимита попыток"
+        try:
+            value = int(attempt_limit)
+        except (TypeError, ValueError):
+            return "Без лимита попыток"
+        if value <= 0:
+            return "Без лимита попыток"
+        if value % 10 == 1 and value % 100 != 11:
+            suffix = "попытка"
+        elif value % 10 in (2, 3, 4) and value % 100 not in (12, 13, 14):
+            suffix = "попытки"
+        else:
+            suffix = "попыток"
+        return f"{value} {suffix}"
+
     def clear_page(self):
         self.cancel_timer()
         self.unbind("<Return>")
@@ -472,13 +489,14 @@ class QuizApplication(tk.Tk):
             selected_title.configure(text=row["quiz_title"])
             description = row["description"] or "Описание не указано."
             timer_mode = row.get("timer_mode") or "QUIZ"
+            attempt_mode = self.format_attempt_limit(row.get("attempt_limit"))
             timing = (
                 f"{row['duration_minutes']} мин. на весь тест"
                 if timer_mode == "QUIZ"
                 else f"{row['duration_minutes']} мин. на каждый вопрос"
             )
             selected_info.configure(
-                text=f"{description}\n{row['question_count']} вопросов  |  {timing}  |  {row['max_points']} баллов  |  Автор: {row['author_name']}"
+                text=f"{description}\n{row['question_count']} вопросов  |  {timing}  |  {attempt_mode}  |  {row['max_points']} баллов  |  Автор: {row['author_name']}"
             )
             for child in chips_anchor.winfo_children():
                 child.destroy()
@@ -488,6 +506,7 @@ class QuizApplication(tk.Tk):
                     (STATUS_NAMES.get(row.get("status"), "Опубликован"), self.tone_for_status(row.get("status"))),
                     (ACCESS_NAMES.get(row.get("access_mode"), "Публичный"), self.tone_for_access(row.get("access_mode"))),
                     (TIMER_MODE_NAMES.get(timer_mode, timer_mode), "warning"),
+                    (attempt_mode, "default"),
                 ],
             )
 
@@ -1314,13 +1333,22 @@ class QuizApplication(tk.Tk):
         duration.pack(side="left")
         duration_hint = ttk.Label(duration_row, text="минут на весь тест", style="Muted.TLabel")
         duration_hint.pack(side="left", padx=(10, 0))
-        ttk.Label(form, text="Доступ", style="Card.TLabel").grid(row=5, column=0, sticky="w", pady=7)
+
+        ttk.Label(form, text="Лимит попыток на пользователя", style="Card.TLabel").grid(row=5, column=0, sticky="w", pady=7)
+        attempt_limit_row = ttk.Frame(form, style="Panel.TFrame")
+        attempt_limit_row.grid(row=5, column=1, sticky="ew", padx=(20, 0), pady=7)
+        attempt_limit = ttk.Entry(attempt_limit_row, width=14)
+        attempt_limit.insert(0, "0")
+        attempt_limit.pack(side="left")
+        ttk.Label(attempt_limit_row, text="0 = без ограничений", style="Muted.TLabel").pack(side="left", padx=(10, 0))
+
+        ttk.Label(form, text="Доступ", style="Card.TLabel").grid(row=6, column=0, sticky="w", pady=7)
         access = ttk.Combobox(form, values=["Публичный", "По приглашению"], state="readonly")
         access.set("Публичный")
-        access.grid(row=5, column=1, sticky="ew", padx=(20, 0), pady=7)
+        access.grid(row=6, column=1, sticky="ew", padx=(20, 0), pady=7)
         feedback = tk.BooleanVar(value=True)
         ttk.Checkbutton(form, text="Показывать правильные ответы после завершения", variable=feedback).grid(
-            row=6, column=1, sticky="w", padx=(20, 0), pady=(8, 17)
+            row=7, column=1, sticky="w", padx=(20, 0), pady=(8, 17)
         )
         form.columnconfigure(1, weight=1)
 
@@ -1347,7 +1375,16 @@ class QuizApplication(tk.Tk):
                 return
 
             try:
+                attempt_limit_raw = int(attempt_limit.get())
+                if attempt_limit_raw < 0 or attempt_limit_raw > 1000:
+                    raise ValueError
+            except ValueError:
+                messagebox.showwarning("Тест", "Лимит попыток указывается числом от 0 до 1000 (0 = без ограничений).")
+                return
+
+            try:
                 timer_mode_code = "QUESTION" if timer_mode.get() == "На каждый вопрос" else "QUIZ"
+                attempt_limit_value = attempt_limit_raw if attempt_limit_raw > 0 else None
                 self.gateway.create_quiz(
                     self.user.user_id,
                     topic_id,
@@ -1355,6 +1392,7 @@ class QuizApplication(tk.Tk):
                     quiz_description.get("1.0", "end").strip(),
                     timer_mode_code,
                     duration_value,
+                    attempt_limit_value,
                     int(feedback.get()),
                     "PUBLIC" if access.get() == "Публичный" else "RESTRICTED",
                 )
@@ -1364,7 +1402,7 @@ class QuizApplication(tk.Tk):
                 self.report_error(exc)
 
         ttk.Button(form, text=self.icon_text("add", "Создать черновик и перейти к вопросам"), style="Primary.TButton", command=create_quiz).grid(
-            row=7, column=1, sticky="w", padx=(20, 0)
+            row=8, column=1, sticky="w", padx=(20, 0)
         )
 
     def build_admin_question_editor(self, notebook):
@@ -1386,6 +1424,7 @@ class QuizApplication(tk.Tk):
         quiz_statuses = {row["quiz_id"]: row["status"] for row in managed_quizzes}
         quiz_access_modes = {row["quiz_id"]: row["access_mode"] for row in managed_quizzes}
         quiz_timer_modes = {row["quiz_id"]: row["timer_mode"] for row in managed_quizzes}
+        quiz_attempt_limits = {row["quiz_id"]: row.get("attempt_limit") for row in managed_quizzes}
         types, difficulties = self.gateway.dictionaries()
         type_values = [f"{row['type_code']} | {row['type_name']}" for row in types]
         diff_values = [f"{row['difficulty_code']} | {row['difficulty_name']}" for row in difficulties]
@@ -1529,6 +1568,7 @@ class QuizApplication(tk.Tk):
                     (STATUS_NAMES.get(quiz_statuses.get(quiz_id), "Черновик"), self.tone_for_status(quiz_statuses.get(quiz_id))),
                     (ACCESS_NAMES.get(quiz_access_modes.get(quiz_id), "Публичный"), self.tone_for_access(quiz_access_modes.get(quiz_id))),
                     (TIMER_MODE_NAMES.get(quiz_timer_modes.get(quiz_id) or "QUIZ", "На весь тест"), "default"),
+                    (self.format_attempt_limit(quiz_attempt_limits.get(quiz_id)), "default"),
                 ],
             )
             topic_id = quiz_topics[quiz_id]
@@ -1680,6 +1720,13 @@ class QuizApplication(tk.Tk):
         feedback_toggle.pack(anchor="w", pady=(8, 0))
         feedback_hint = ttk.Label(settings, text="", style="Muted.TLabel")
         feedback_hint.pack(anchor="w", pady=(4, 0))
+        attempts_row = ttk.Frame(settings, style="Panel.TFrame")
+        attempts_row.pack(anchor="w", pady=(8, 0))
+        ttk.Label(attempts_row, text="Лимит попыток на пользователя", style="Muted.TLabel").pack(side="left")
+        attempt_limit_value = tk.StringVar(value="0")
+        attempt_limit_entry = ttk.Entry(attempts_row, width=10, textvariable=attempt_limit_value)
+        attempt_limit_entry.pack(side="left", padx=(10, 0))
+        ttk.Label(attempts_row, text="0 = без ограничений", style="Muted.TLabel").pack(side="left", padx=(10, 0))
         chips_anchor = tk.Frame(settings, bg=COLORS["panel"])
         chips_anchor.pack(anchor="w", pady=(SPACING["xs"], 0))
 
@@ -1692,8 +1739,11 @@ class QuizApplication(tk.Tk):
             row = selected_quiz()
             if row is None:
                 feedback_var.set(True)
+                attempt_limit_value.set("0")
                 feedback_toggle.configure(state="disabled")
                 save_feedback.configure(state="disabled")
+                attempt_limit_entry.configure(state="disabled")
+                save_attempt_limit.configure(state="disabled")
                 feedback_hint.configure(text="Выберите тест. Изменение доступно только для черновика.")
                 for child in chips_anchor.winfo_children():
                     child.destroy()
@@ -1706,16 +1756,22 @@ class QuizApplication(tk.Tk):
                     (STATUS_NAMES.get(row["status"], row["status"]), self.tone_for_status(row["status"])),
                     (ACCESS_NAMES.get(row["access_mode"], row["access_mode"]), self.tone_for_access(row["access_mode"])),
                     (TIMER_MODE_NAMES.get(row.get("timer_mode") or "QUIZ", "На весь тест"), "default"),
+                    (self.format_attempt_limit(row.get("attempt_limit")), "default"),
                 ],
             )
             feedback_var.set(int(row.get("show_feedback") or 0) == 1)
+            attempt_limit_value.set(str(row.get("attempt_limit") or 0))
             if row["status"] == "DRAFT":
                 feedback_toggle.configure(state="normal")
                 save_feedback.configure(state="normal")
+                attempt_limit_entry.configure(state="normal")
+                save_attempt_limit.configure(state="normal")
                 feedback_hint.configure(text="Черновик: настройку можно менять перед публикацией.")
             else:
                 feedback_toggle.configure(state="disabled")
                 save_feedback.configure(state="disabled")
+                attempt_limit_entry.configure(state="disabled")
+                save_attempt_limit.configure(state="disabled")
                 feedback_hint.configure(text="Опубликованный тест: чтобы изменить настройку, сначала скройте его в черновик.")
 
         def apply_feedback_setting():
@@ -1740,6 +1796,40 @@ class QuizApplication(tk.Tk):
             command=apply_feedback_setting,
         )
         save_feedback.pack(anchor="w", pady=(8, 0))
+
+        def apply_attempt_limit_setting():
+            row = selected_quiz()
+            if row is None:
+                messagebox.showwarning("Лимит попыток", "Сначала выберите тест в таблице.")
+                return
+            if row["status"] != "DRAFT":
+                messagebox.showwarning("Лимит попыток", "Изменять лимит попыток можно только у черновика.")
+                return
+            try:
+                parsed = int(attempt_limit_value.get().strip())
+                if parsed < 0 or parsed > 1000:
+                    raise ValueError
+            except ValueError:
+                messagebox.showwarning("Лимит попыток", "Укажите число от 0 до 1000 (0 = без ограничений).")
+                return
+            try:
+                self.gateway.set_quiz_attempt_limit(
+                    self.user.user_id,
+                    row["quiz_id"],
+                    parsed if parsed > 0 else None,
+                )
+                messagebox.showinfo("Лимит попыток", "Лимит попыток для черновика сохранен.")
+                self.show_admin("Публикация")
+            except Exception as exc:
+                self.report_error(exc)
+
+        save_attempt_limit = ttk.Button(
+            settings,
+            text=self.icon_text("save", "Сохранить лимит попыток"),
+            style="Quiet.TButton",
+            command=apply_attempt_limit_setting,
+        )
+        save_attempt_limit.pack(anchor="w", pady=(8, 0))
 
         def publish():
             if not tree.selection():

@@ -31,16 +31,29 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
         v_duration quizzes.duration_minutes%TYPE;
         v_limit quizzes.question_limit%TYPE;
         v_timer_mode quizzes.timer_mode%TYPE;
+        v_attempt_limit quizzes.attempt_limit%TYPE;
+        v_user_attempt_count NUMBER;
         v_count NUMBER;
     BEGIN
         IF fn_can_access_quiz(p_user_id, p_quiz_id) = 0 THEN
             RAISE_APPLICATION_ERROR(-20200, 'Тест недоступен или еще не опубликован.');
         END IF;
 
-        SELECT duration_minutes, question_limit, timer_mode
-          INTO v_duration, v_limit, v_timer_mode
+        SELECT duration_minutes, question_limit, timer_mode, attempt_limit
+          INTO v_duration, v_limit, v_timer_mode, v_attempt_limit
           FROM quizzes
          WHERE quiz_id = p_quiz_id;
+
+        IF v_attempt_limit IS NOT NULL THEN
+            SELECT COUNT(*)
+              INTO v_user_attempt_count
+              FROM attempts
+             WHERE user_id = p_user_id
+               AND quiz_id = p_quiz_id;
+            IF v_user_attempt_count >= v_attempt_limit THEN
+                RAISE_APPLICATION_ERROR(-20211, 'Лимит попыток для этого теста исчерпан.');
+            END IF;
+        END IF;
 
         INSERT INTO attempts (
             user_id,

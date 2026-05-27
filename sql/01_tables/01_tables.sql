@@ -56,6 +56,8 @@ CREATE TABLE quizzes (
         CONSTRAINT ck_quizzes_duration CHECK (duration_minutes BETWEEN 1 AND 1440),
     question_limit NUMBER
         CONSTRAINT ck_quizzes_limit CHECK (question_limit IS NULL OR question_limit > 0),
+    attempt_limit NUMBER
+        CONSTRAINT ck_quizzes_attempt_limit CHECK (attempt_limit IS NULL OR attempt_limit > 0),
     show_feedback NUMBER(1) DEFAULT 1 NOT NULL
         CONSTRAINT ck_quizzes_feedback CHECK (show_feedback IN (0, 1)),
     access_mode VARCHAR2(15) DEFAULT 'PUBLIC' NOT NULL
