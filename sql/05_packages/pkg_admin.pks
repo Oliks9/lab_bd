@@ -18,6 +18,7 @@ CREATE OR REPLACE PACKAGE pkg_admin AS
         p_topic_id IN NUMBER,
         p_title IN VARCHAR2,
         p_description IN VARCHAR2,
+        p_timer_mode IN VARCHAR2,
         p_duration_minutes IN NUMBER,
         p_show_feedback IN NUMBER,
         p_access_mode IN VARCHAR2,

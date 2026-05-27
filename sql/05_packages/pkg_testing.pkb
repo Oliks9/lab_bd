@@ -6,19 +6,39 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
     ) IS
         v_duration quizzes.duration_minutes%TYPE;
         v_limit quizzes.question_limit%TYPE;
+        v_timer_mode quizzes.timer_mode%TYPE;
         v_count NUMBER;
     BEGIN
         IF fn_can_access_quiz(p_user_id, p_quiz_id) = 0 THEN
             RAISE_APPLICATION_ERROR(-20200, 'Тест недоступен или еще не опубликован.');
         END IF;
 
-        SELECT duration_minutes, question_limit
-          INTO v_duration, v_limit
+        SELECT duration_minutes, question_limit, timer_mode
+          INTO v_duration, v_limit, v_timer_mode
           FROM quizzes
          WHERE quiz_id = p_quiz_id;
 
-        INSERT INTO attempts (user_id, quiz_id, deadline_at)
-        VALUES (p_user_id, p_quiz_id, SYSTIMESTAMP + NUMTODSINTERVAL(v_duration, 'MINUTE'))
+        INSERT INTO attempts (
+            user_id,
+            quiz_id,
+            deadline_at,
+            timer_mode,
+            question_duration_minutes,
+            active_question_order,
+            question_started_at
+        )
+        VALUES (
+            p_user_id,
+            p_quiz_id,
+            CASE
+                WHEN v_timer_mode = 'QUIZ' THEN SYSTIMESTAMP + NUMTODSINTERVAL(v_duration, 'MINUTE')
+                ELSE NULL
+            END,
+            v_timer_mode,
+            CASE WHEN v_timer_mode = 'QUESTION' THEN v_duration ELSE NULL END,
+            CASE WHEN v_timer_mode = 'QUESTION' THEN 1 ELSE NULL END,
+            CASE WHEN v_timer_mode = 'QUESTION' THEN SYSTIMESTAMP ELSE NULL END
+        )
         RETURNING attempt_id INTO p_attempt_id;
 
         INSERT INTO attempt_questions (attempt_id, question_id, display_order)
@@ -44,10 +64,16 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
     ) IS
         v_status attempts.status%TYPE;
         v_deadline attempts.deadline_at%TYPE;
+        v_timer_mode attempts.timer_mode%TYPE;
+        v_question_duration attempts.question_duration_minutes%TYPE;
+        v_active_order attempts.active_question_order%TYPE;
+        v_question_started attempts.question_started_at%TYPE;
+        v_display_order attempt_questions.display_order%TYPE;
         v_type questions.type_code%TYPE;
         v_expected questions.expected_answer%TYPE;
         v_points questions.points%TYPE;
         v_answer_id NUMBER;
+        v_total_questions NUMBER := 0;
         v_clean_ids VARCHAR2(4000) := REPLACE(TRIM(p_selected_option_ids), ' ', '');
         v_selected_count NUMBER := 0;
         v_selected_correct NUMBER := 0;
@@ -55,20 +81,62 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
         v_token_count NUMBER := 0;
         v_is_correct NUMBER(1) := 0;
     BEGIN
-        SELECT a.status, a.deadline_at, q.type_code, q.expected_answer, q.points
-          INTO v_status, v_deadline, v_type, v_expected, v_points
+        SELECT
+            a.status,
+            a.deadline_at,
+            a.timer_mode,
+            a.question_duration_minutes,
+            a.active_question_order,
+            a.question_started_at,
+            aq.display_order,
+            q.type_code,
+            q.expected_answer,
+            q.points
+          INTO
+            v_status,
+            v_deadline,
+            v_timer_mode,
+            v_question_duration,
+            v_active_order,
+            v_question_started,
+            v_display_order,
+            v_type,
+            v_expected,
+            v_points
           FROM attempts a
           JOIN attempt_questions aq ON aq.attempt_id = a.attempt_id
           JOIN questions q ON q.question_id = aq.question_id
          WHERE a.attempt_id = p_attempt_id
            AND q.question_id = p_question_id
-         FOR UPDATE OF a.status;
+         FOR UPDATE OF a.status, a.active_question_order, a.question_started_at;
 
         IF v_status <> 'IN_PROGRESS' THEN
             RAISE_APPLICATION_ERROR(-20202, 'Попытка уже завершена.');
         END IF;
-        IF v_deadline IS NOT NULL AND SYSTIMESTAMP > v_deadline THEN
-            RAISE_APPLICATION_ERROR(-20203, 'Время прохождения истекло. Завершите попытку.');
+
+        IF v_timer_mode = 'QUIZ' THEN
+            IF v_deadline IS NOT NULL AND SYSTIMESTAMP > v_deadline THEN
+                RAISE_APPLICATION_ERROR(-20203, 'Время прохождения теста истекло. Попытка будет завершена.');
+            END IF;
+        ELSE
+            IF v_active_order IS NULL THEN
+                RAISE_APPLICATION_ERROR(-20202, 'Попытка уже завершена.');
+            END IF;
+            IF v_display_order <> v_active_order THEN
+                RAISE_APPLICATION_ERROR(-20208, 'Отвечайте на вопросы по порядку.');
+            END IF;
+            IF v_question_duration IS NULL THEN
+                v_question_duration := 1;
+            END IF;
+            IF v_question_started IS NULL THEN
+                v_question_started := SYSTIMESTAMP;
+                UPDATE attempts
+                   SET question_started_at = v_question_started
+                 WHERE attempt_id = p_attempt_id;
+            END IF;
+            IF SYSTIMESTAMP > v_question_started + NUMTODSINTERVAL(v_question_duration, 'MINUTE') THEN
+                RAISE_APPLICATION_ERROR(-20203, 'Время на текущий вопрос истекло. Попытка будет завершена.');
+            END IF;
         END IF;
 
         DELETE FROM user_answers
@@ -129,6 +197,25 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
            SET is_correct = v_is_correct,
                awarded_points = CASE WHEN v_is_correct = 1 THEN v_points ELSE 0 END
          WHERE answer_id = v_answer_id;
+
+        IF v_timer_mode = 'QUESTION' THEN
+            SELECT COUNT(*)
+              INTO v_total_questions
+              FROM attempt_questions
+             WHERE attempt_id = p_attempt_id;
+
+            IF v_active_order < v_total_questions THEN
+                UPDATE attempts
+                   SET active_question_order = v_active_order + 1,
+                       question_started_at = SYSTIMESTAMP
+                 WHERE attempt_id = p_attempt_id;
+            ELSE
+                UPDATE attempts
+                   SET active_question_order = v_total_questions + 1,
+                       question_started_at = NULL
+                 WHERE attempt_id = p_attempt_id;
+            END IF;
+        END IF;
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
             RAISE_APPLICATION_ERROR(-20206, 'Вопрос не входит в текущую попытку.');
@@ -139,12 +226,15 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
     ) IS
         v_status attempts.status%TYPE;
         v_deadline attempts.deadline_at%TYPE;
+        v_timer_mode attempts.timer_mode%TYPE;
+        v_question_duration attempts.question_duration_minutes%TYPE;
+        v_question_started attempts.question_started_at%TYPE;
         v_awarded NUMBER;
         v_max NUMBER;
         v_result_status VARCHAR2(20);
     BEGIN
-        SELECT status, deadline_at
-          INTO v_status, v_deadline
+        SELECT status, deadline_at, timer_mode, question_duration_minutes, question_started_at
+          INTO v_status, v_deadline, v_timer_mode, v_question_duration, v_question_started
           FROM attempts
          WHERE attempt_id = p_attempt_id
          FOR UPDATE;
@@ -162,12 +252,20 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
          WHERE aq.attempt_id = p_attempt_id;
 
         v_result_status := CASE
-            WHEN v_deadline IS NOT NULL AND SYSTIMESTAMP > v_deadline THEN 'EXPIRED'
+            WHEN v_timer_mode = 'QUIZ'
+                 AND v_deadline IS NOT NULL
+                 AND SYSTIMESTAMP > v_deadline THEN 'EXPIRED'
+            WHEN v_timer_mode = 'QUESTION'
+                 AND v_question_started IS NOT NULL
+                 AND v_question_duration IS NOT NULL
+                 AND SYSTIMESTAMP > v_question_started + NUMTODSINTERVAL(v_question_duration, 'MINUTE') THEN 'EXPIRED'
             ELSE 'FINISHED'
         END;
         UPDATE attempts
            SET status = v_result_status,
                finished_at = SYSTIMESTAMP,
+               active_question_order = NULL,
+               question_started_at = NULL,
                awarded_points = v_awarded,
                max_points = v_max,
                score_percent = fn_attempt_percent(p_attempt_id)

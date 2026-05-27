@@ -50,6 +50,8 @@ CREATE TABLE quizzes (
     author_id NUMBER NOT NULL CONSTRAINT fk_quizzes_author REFERENCES app_users(user_id),
     title VARCHAR2(200) NOT NULL,
     description VARCHAR2(1000),
+    timer_mode VARCHAR2(15) DEFAULT 'QUIZ' NOT NULL
+        CONSTRAINT ck_quizzes_timer_mode CHECK (timer_mode IN ('QUIZ', 'QUESTION')),
     duration_minutes NUMBER DEFAULT 15 NOT NULL
         CONSTRAINT ck_quizzes_duration CHECK (duration_minutes BETWEEN 1 AND 1440),
     question_limit NUMBER
@@ -103,6 +105,13 @@ CREATE TABLE attempts (
     quiz_id NUMBER NOT NULL CONSTRAINT fk_attempts_quiz REFERENCES quizzes(quiz_id),
     started_at TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
     deadline_at TIMESTAMP WITH TIME ZONE,
+    timer_mode VARCHAR2(15) DEFAULT 'QUIZ' NOT NULL
+        CONSTRAINT ck_attempts_timer_mode CHECK (timer_mode IN ('QUIZ', 'QUESTION')),
+    question_duration_minutes NUMBER
+        CONSTRAINT ck_attempts_question_duration CHECK (question_duration_minutes IS NULL OR question_duration_minutes BETWEEN 1 AND 1440),
+    active_question_order NUMBER
+        CONSTRAINT ck_attempts_active_order CHECK (active_question_order IS NULL OR active_question_order > 0),
+    question_started_at TIMESTAMP WITH TIME ZONE,
     finished_at TIMESTAMP WITH TIME ZONE,
     status VARCHAR2(20) DEFAULT 'IN_PROGRESS' NOT NULL
         CONSTRAINT ck_attempts_status CHECK (status IN ('IN_PROGRESS', 'FINISHED', 'EXPIRED')),

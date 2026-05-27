@@ -58,7 +58,7 @@ class OracleGateway:
     def catalog(self, user_id: int, topic_id=None):
         return self._rows(
             """
-            SELECT quiz_id, topic_title, quiz_title, description, duration_minutes,
+            SELECT quiz_id, topic_title, quiz_title, description, timer_mode, duration_minutes,
                    question_count, max_points, author_name
               FROM v_quiz_catalog
              WHERE fn_can_access_quiz(:user_id, quiz_id) = 1
@@ -102,13 +102,32 @@ class OracleGateway:
         return self._rows(
             """
             SELECT a.attempt_id, a.deadline_at, q.title AS quiz_title, q.show_feedback,
-                   GREATEST(
-                       0,
-                       ROUND(
-                           (CAST(SYS_EXTRACT_UTC(a.deadline_at) AS DATE)
-                           - CAST(SYS_EXTRACT_UTC(SYSTIMESTAMP) AS DATE)) * 86400
-                       )
-                   ) AS remaining_seconds
+                   a.timer_mode, a.question_duration_minutes, a.active_question_order,
+                   NVL(
+                       GREATEST(
+                           0,
+                           ROUND(
+                               (CAST(SYS_EXTRACT_UTC(a.deadline_at) AS DATE)
+                               - CAST(SYS_EXTRACT_UTC(SYSTIMESTAMP) AS DATE)) * 86400
+                           )
+                       ),
+                       0
+                   ) AS remaining_seconds,
+                   CASE
+                       WHEN a.timer_mode = 'QUESTION'
+                            AND a.question_started_at IS NOT NULL
+                            AND a.question_duration_minutes IS NOT NULL THEN
+                           GREATEST(
+                               0,
+                               ROUND(
+                                   (
+                                       CAST(SYS_EXTRACT_UTC(a.question_started_at + NUMTODSINTERVAL(a.question_duration_minutes, 'MINUTE')) AS DATE)
+                                       - CAST(SYS_EXTRACT_UTC(SYSTIMESTAMP) AS DATE)
+                                   ) * 86400
+                               )
+                           )
+                       ELSE NULL
+                   END AS question_remaining_seconds
               FROM attempts a JOIN quizzes q ON q.quiz_id = a.quiz_id
              WHERE a.attempt_id = :id
             """,
@@ -172,7 +191,8 @@ class OracleGateway:
     def admin_quizzes(self, actor: SessionUser):
         return self._rows(
             """
-            SELECT q.quiz_id, q.topic_id, t.title AS topic_title, q.title, q.status, q.access_mode
+            SELECT q.quiz_id, q.topic_id, t.title AS topic_title, q.title, q.status, q.access_mode,
+                   q.timer_mode, q.duration_minutes
               FROM quizzes q JOIN topics t ON t.topic_id = q.topic_id
              WHERE :role = 'ADMIN' OR q.author_id = :actor_id
              ORDER BY q.created_at DESC
@@ -223,12 +243,22 @@ class OracleGateway:
         self.connection.commit()
         return int(value.getvalue())
 
-    def create_quiz(self, actor_id: int, topic_id: int, title: str, description: str, duration: int, show_feedback: int, access_mode: str) -> int:
+    def create_quiz(
+        self,
+        actor_id: int,
+        topic_id: int,
+        title: str,
+        description: str,
+        timer_mode: str,
+        duration: int,
+        show_feedback: int,
+        access_mode: str,
+    ) -> int:
         with self.connection.cursor() as cursor:
             value = cursor.var(int)
             cursor.callproc(
                 "pkg_admin.create_quiz",
-                [actor_id, topic_id, title, description, duration, show_feedback, access_mode, value],
+                [actor_id, topic_id, title, description, timer_mode, duration, show_feedback, access_mode, value],
             )
         self.connection.commit()
         return int(value.getvalue())

@@ -4,6 +4,7 @@ SET SERVEROUTPUT ON
 CONNECT quiz_app/QuizSchema2026@//localhost:1521/FREEPDB1
 
 @/opt/quiz-project/sql/08_migrations/20260527_attempt_timezone.sql
+@/opt/quiz-project/sql/08_migrations/20260527_quiz_timer_mode.sql
 
 PROMPT === Recompiling PL/SQL application modules without deleting data ===
 @/opt/quiz-project/sql/02_functions/fn_hash_password.sql

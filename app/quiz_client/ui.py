@@ -19,6 +19,10 @@ ACCESS_NAMES = {
     "PUBLIC": "Публичный",
     "RESTRICTED": "По приглашению",
 }
+TIMER_MODE_NAMES = {
+    "QUIZ": "На весь тест",
+    "QUESTION": "На каждый вопрос",
+}
 
 
 class QuizApplication(tk.Tk):
@@ -38,6 +42,7 @@ class QuizApplication(tk.Tk):
         self.active_index = 0
         self.active_header = None
         self.remaining_seconds = None
+        self.timer_caption = "Осталось времени"
         self.timer_job = None
         self.connected_dsn = None
         self.show_connection()
@@ -301,8 +306,14 @@ class QuizApplication(tk.Tk):
             row = rows_by_id[chosen[0]]
             selected_title.configure(text=row["quiz_title"])
             description = row["description"] or "Описание не указано."
+            timer_mode = row.get("timer_mode") or "QUIZ"
+            timing = (
+                f"{row['duration_minutes']} мин. на весь тест"
+                if timer_mode == "QUIZ"
+                else f"{row['duration_minutes']} мин. на каждый вопрос"
+            )
             selected_info.configure(
-                text=f"{description}\n{row['question_count']} вопросов  |  {row['duration_minutes']} мин.  |  {row['max_points']} баллов  |  Автор: {row['author_name']}"
+                text=f"{description}\n{row['question_count']} вопросов  |  {timing}  |  {row['max_points']} баллов  |  Автор: {row['author_name']}"
             )
 
         tree.bind("<<TreeviewSelect>>", show_selected)
@@ -313,45 +324,83 @@ class QuizApplication(tk.Tk):
     def start_quiz_screen(self, attempt_id):
         self.active_attempt_id = attempt_id
         try:
-            self.active_header = self.gateway.attempt_header(attempt_id)
             self.active_questions = self.gateway.attempt_questions(attempt_id)
         except Exception as exc:
             self.report_error(exc)
             self.show_catalog()
             return
         self.active_index = 0
-        self.remaining_seconds = int(self.active_header.get("remaining_seconds") or 0)
+        if not self.refresh_timer_state():
+            return
         self.show_question()
+
+    def refresh_timer_state(self):
+        if self.active_attempt_id is None:
+            return False
+        try:
+            self.active_header = self.gateway.attempt_header(self.active_attempt_id)
+        except Exception as exc:
+            self.report_error(exc)
+            self.show_catalog()
+            return False
+
+        timer_mode = self.active_header.get("timer_mode") or "QUIZ"
+        if timer_mode == "QUESTION":
+            self.timer_caption = "На вопрос"
+            self.remaining_seconds = int(self.active_header.get("question_remaining_seconds") or 0)
+        else:
+            self.timer_caption = "На тест"
+            self.remaining_seconds = int(self.active_header.get("remaining_seconds") or 0)
+        return True
 
     def show_question(self):
         self.clear_page()
         if self.active_index >= len(self.active_questions):
             self.finish_active_attempt()
             return
+        if not self.refresh_timer_state():
+            return
+
         question = self.active_questions[self.active_index]
         total = len(self.active_questions)
+        timer_mode = self.active_header.get("timer_mode") or "QUIZ"
+        timer_mode_name = TIMER_MODE_NAMES.get(timer_mode, timer_mode)
         self.heading(
             self.active_header["quiz_title"],
             f"Вопрос {self.active_index + 1} из {total} | {question['category_title']} | {question['difficulty_name']} | {question['points']} балл(а)",
             with_navigation=False,
         )
-        top = ttk.Frame(self.page, style="App.TFrame")
-        top.pack(fill="x", pady=(0, 14))
+        top_outer, top = self.panel(self.page, padding=14)
+        top_outer.pack(fill="x", pady=(0, 14))
+        ttk.Label(
+            top,
+            text=f"Шаг {self.active_index + 1} из {total}. Режим времени: {timer_mode_name}",
+            style="Card.TLabel",
+        ).pack(anchor="w")
         progress = ttk.Progressbar(top, maximum=total, value=self.active_index + 1)
-        progress.pack(side="left", fill="x", expand=True)
-        timer_label = tk.Label(top, bg=COLORS["bg"], fg=COLORS["gold"], font=("Segoe UI", 11, "bold"))
-        timer_label.pack(side="right", padx=(20, 0))
+        progress.pack(fill="x", pady=(6, 0))
+        timer_label = tk.Label(top, bg=COLORS["panel"], fg=COLORS["gold"], font=("Segoe UI", 11, "bold"))
+        timer_label.pack(anchor="e", pady=(8, 0))
         self.update_timer(timer_label)
 
         outer, card = self.panel(self.page, padding=24)
         outer.pack(fill="both", expand=True)
         ttk.Label(card, text=question["question_text"], style="CardTitle.TLabel", wraplength=1040, justify="left").pack(anchor="w", pady=(0, 20))
+        ttk.Label(
+            card,
+            text="Ответ сохраняется сразу. После перехода к следующему вопросу вернуться назад нельзя.",
+            style="Muted.TLabel",
+            wraplength=980,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 14))
         type_code = question["type_code"]
         selected_radio = tk.IntVar(value=-1)
         selected_checks = {}
         text_value = ttk.Entry(card, width=75)
         if type_code in ("SINGLE_CHOICE", "BOOLEAN", "MULTIPLE_CHOICE"):
             options = self.gateway.question_options(question["question_id"])
+            if type_code == "MULTIPLE_CHOICE":
+                ttk.Label(card, text="Можно выбрать несколько вариантов.", style="Muted.TLabel").pack(anchor="w", pady=(0, 8))
             for option in options:
                 if type_code == "MULTIPLE_CHOICE":
                     variable = tk.BooleanVar(value=False)
@@ -388,19 +437,33 @@ class QuizApplication(tk.Tk):
                 self.active_index += 1
                 self.show_question()
             except Exception as exc:
+                raw = str(exc)
+                if "ORA-20203" in raw or "-20203" in raw:
+                    messagebox.showinfo("Время", "Лимит времени истек. Попытка будет завершена.")
+                    self.finish_active_attempt()
+                    return
                 self.report_error(exc)
 
-        ttk.Button(actions, text="Сохранить ответ и далее", style="Primary.TButton", command=submit_and_continue).pack(side="right")
-        ttk.Button(actions, text="Завершить тест", style="Quiet.TButton", command=self.finish_active_attempt).pack(side="right", padx=(0, 10))
+        def finish_by_user():
+            if messagebox.askyesno("Завершить тест", "Завершить попытку сейчас? Ответы уже сохраненные останутся."):
+                self.finish_active_attempt()
+
+        next_text = "Завершить и показать результат" if self.active_index + 1 == total else "Сохранить ответ и дальше"
+        ttk.Button(actions, text=next_text, style="Primary.TButton", command=submit_and_continue).pack(side="right")
+        ttk.Button(actions, text="Завершить тест", style="Quiet.TButton", command=finish_by_user).pack(side="right", padx=(0, 10))
+        text_value.bind("<Return>", lambda _event: submit_and_continue())
 
     def update_timer(self, label):
         if self.remaining_seconds is None:
             return
         seconds = max(0, self.remaining_seconds)
         minutes, remainder = divmod(seconds, 60)
-        label.configure(text=f"Осталось {minutes:02d}:{remainder:02d}")
+        label.configure(text=f"{self.timer_caption}: {minutes:02d}:{remainder:02d}")
         if seconds <= 0:
-            messagebox.showinfo("Время", "Время теста истекло. Попытка будет завершена.")
+            if (self.active_header or {}).get("timer_mode") == "QUESTION":
+                messagebox.showinfo("Время", "Время на текущий вопрос истекло. Попытка будет завершена.")
+            else:
+                messagebox.showinfo("Время", "Время теста истекло. Попытка будет завершена.")
             self.finish_active_attempt()
             return
         self.remaining_seconds -= 1
@@ -423,6 +486,7 @@ class QuizApplication(tk.Tk):
             return
         self.active_attempt_id = None
         self.remaining_seconds = None
+        self.timer_caption = "Осталось времени"
         self.show_result(attempt_id)
 
     def show_result(self, attempt_id):
@@ -652,41 +716,64 @@ class QuizApplication(tk.Tk):
     def build_admin_quiz_editor(self, notebook):
         tab = ttk.Frame(notebook, style="App.TFrame", padding=16)
         notebook.add(tab, text="Новый тест")
+        intro_outer, intro = self.panel(tab, padding=16)
+        intro_outer.pack(fill="x", padx=(80, 80), pady=(0, 12))
+        ttk.Label(intro, text="Шаг 1 из 2: создайте параметры теста", style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(
+            intro,
+            text="После создания черновика переходите во вкладку «Вопросы» и заполните содержание теста.",
+            style="Muted.TLabel",
+            wraplength=920,
+            justify="left",
+        ).pack(anchor="w", pady=(4, 0))
+
         outer, form = self.panel(tab, padding=22)
-        outer.pack(fill="x", padx=(145, 145), pady=(10, 0))
-        ttk.Label(form, text="Новый тест", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=2, sticky="w")
-        ttk.Label(form, text="Сначала создайте черновик, затем заполните его вопросами на следующем шаге.", style="Muted.TLabel").grid(
-            row=1, column=0, columnspan=2, sticky="w", pady=(3, 18)
-        )
+        outer.pack(fill="x", padx=(80, 80), pady=(0, 0))
         topics = self.gateway.admin_topics()
         topic_values = [f"{row['topic_id']} | {row['title']}" for row in topics]
-        ttk.Label(form, text="Тематика", style="Card.TLabel").grid(row=2, column=0, sticky="w", pady=7)
+        ttk.Label(form, text="Тематика", style="Card.TLabel").grid(row=0, column=0, sticky="w", pady=7)
         quiz_topic = ttk.Combobox(form, values=topic_values, state="readonly", width=48)
-        quiz_topic.grid(row=2, column=1, sticky="ew", padx=(20, 0), pady=7)
+        quiz_topic.grid(row=0, column=1, sticky="ew", padx=(20, 0), pady=7)
         if topic_values:
             quiz_topic.set(topic_values[0])
-        ttk.Label(form, text="Название теста", style="Card.TLabel").grid(row=3, column=0, sticky="w", pady=7)
+        ttk.Label(form, text="Название теста", style="Card.TLabel").grid(row=1, column=0, sticky="w", pady=7)
         quiz_title = ttk.Entry(form)
-        quiz_title.grid(row=3, column=1, sticky="ew", padx=(20, 0), pady=7)
-        ttk.Label(form, text="Краткое описание", style="Card.TLabel").grid(row=4, column=0, sticky="nw", pady=7)
+        quiz_title.grid(row=1, column=1, sticky="ew", padx=(20, 0), pady=7)
+        ttk.Label(form, text="Краткое описание", style="Card.TLabel").grid(row=2, column=0, sticky="nw", pady=7)
         quiz_description = tk.Text(form, height=3, bg="#ffffff", relief="solid", bd=1, font=("Segoe UI", 10))
-        quiz_description.grid(row=4, column=1, sticky="ew", padx=(20, 0), pady=7)
-        ttk.Label(form, text="Время на прохождение", style="Card.TLabel").grid(row=5, column=0, sticky="w", pady=7)
+        quiz_description.grid(row=2, column=1, sticky="ew", padx=(20, 0), pady=7)
+
+        ttk.Label(form, text="Режим лимита времени", style="Card.TLabel").grid(row=3, column=0, sticky="w", pady=7)
+        timer_mode = ttk.Combobox(form, values=["На весь тест", "На каждый вопрос"], state="readonly")
+        timer_mode.set("На весь тест")
+        timer_mode.grid(row=3, column=1, sticky="ew", padx=(20, 0), pady=7)
+
+        ttk.Label(form, text="Лимит времени", style="Card.TLabel").grid(row=4, column=0, sticky="w", pady=7)
         duration_row = ttk.Frame(form, style="Panel.TFrame")
-        duration_row.grid(row=5, column=1, sticky="ew", padx=(20, 0), pady=7)
+        duration_row.grid(row=4, column=1, sticky="ew", padx=(20, 0), pady=7)
         duration = ttk.Entry(duration_row, width=14)
         duration.insert(0, "15")
         duration.pack(side="left")
-        ttk.Label(duration_row, text="минут", style="Muted.TLabel").pack(side="left", padx=(10, 0))
-        ttk.Label(form, text="Доступ", style="Card.TLabel").grid(row=6, column=0, sticky="w", pady=7)
+        duration_hint = ttk.Label(duration_row, text="минут на весь тест", style="Muted.TLabel")
+        duration_hint.pack(side="left", padx=(10, 0))
+        ttk.Label(form, text="Доступ", style="Card.TLabel").grid(row=5, column=0, sticky="w", pady=7)
         access = ttk.Combobox(form, values=["Публичный", "По приглашению"], state="readonly")
         access.set("Публичный")
-        access.grid(row=6, column=1, sticky="ew", padx=(20, 0), pady=7)
+        access.grid(row=5, column=1, sticky="ew", padx=(20, 0), pady=7)
         feedback = tk.BooleanVar(value=True)
         ttk.Checkbutton(form, text="Показывать правильные ответы после завершения", variable=feedback).grid(
-            row=7, column=1, sticky="w", padx=(20, 0), pady=(8, 17)
+            row=6, column=1, sticky="w", padx=(20, 0), pady=(8, 17)
         )
         form.columnconfigure(1, weight=1)
+
+        def sync_timer_hint(_event=None):
+            if timer_mode.get() == "На каждый вопрос":
+                duration_hint.configure(text="минут на каждый вопрос")
+            else:
+                duration_hint.configure(text="минут на весь тест")
+
+        timer_mode.bind("<<ComboboxSelected>>", sync_timer_hint)
+        sync_timer_hint()
 
         def create_quiz():
             if not quiz_topic.get() or not quiz_title.get().strip():
@@ -694,9 +781,24 @@ class QuizApplication(tk.Tk):
                 return
             try:
                 topic_id = int(quiz_topic.get().split("|", 1)[0])
+                duration_value = int(duration.get())
+                if duration_value < 1 or duration_value > 1440:
+                    raise ValueError
+            except ValueError:
+                messagebox.showwarning("Тест", "Укажите корректный лимит времени: от 1 до 1440 минут.")
+                return
+
+            try:
+                timer_mode_code = "QUESTION" if timer_mode.get() == "На каждый вопрос" else "QUIZ"
                 self.gateway.create_quiz(
-                    self.user.user_id, topic_id, quiz_title.get().strip(), quiz_description.get("1.0", "end").strip(), int(duration.get()),
-                    int(feedback.get()), "PUBLIC" if access.get() == "Публичный" else "RESTRICTED",
+                    self.user.user_id,
+                    topic_id,
+                    quiz_title.get().strip(),
+                    quiz_description.get("1.0", "end").strip(),
+                    timer_mode_code,
+                    duration_value,
+                    int(feedback.get()),
+                    "PUBLIC" if access.get() == "Публичный" else "RESTRICTED",
                 )
                 messagebox.showinfo("Тест", "Черновик теста создан. Добавьте вопросы и опубликуйте его.")
                 self.show_admin("Вопросы")
@@ -704,7 +806,7 @@ class QuizApplication(tk.Tk):
                 self.report_error(exc)
 
         ttk.Button(form, text="Создать черновик и перейти к вопросам", style="Primary.TButton", command=create_quiz).grid(
-            row=8, column=1, sticky="w", padx=(20, 0)
+            row=7, column=1, sticky="w", padx=(20, 0)
         )
 
     def build_admin_question_editor(self, notebook):

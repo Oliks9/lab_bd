@@ -28,7 +28,7 @@ BEGIN
         RAISE_APPLICATION_ERROR(-20993, 'AUTHOR could not create a category.');
     END IF;
 
-    pkg_admin.create_quiz(v_author_id, v_topic_id, 'Temporary draft', NULL, 10, 1, 'PUBLIC', v_quiz_id);
+    pkg_admin.create_quiz(v_author_id, v_topic_id, 'Temporary draft', NULL, 'QUIZ', 10, 1, 'PUBLIC', v_quiz_id);
     pkg_admin.add_question(
         v_author_id, v_quiz_id, v_category_id, 'TEXT', 'EASY',
         'Temporary question', 'answer', NULL, 1, v_question_id

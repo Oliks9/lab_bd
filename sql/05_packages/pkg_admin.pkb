@@ -83,19 +83,25 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
         p_topic_id IN NUMBER,
         p_title IN VARCHAR2,
         p_description IN VARCHAR2,
+        p_timer_mode IN VARCHAR2,
         p_duration_minutes IN NUMBER,
         p_show_feedback IN NUMBER,
         p_access_mode IN VARCHAR2,
         p_quiz_id OUT NUMBER
     ) IS
+        v_timer_mode VARCHAR2(15) := UPPER(TRIM(p_timer_mode));
     BEGIN
         require_editor(p_actor_id);
+        IF v_timer_mode NOT IN ('QUIZ', 'QUESTION') THEN
+            RAISE_APPLICATION_ERROR(-20124, 'Режим времени должен быть QUIZ или QUESTION.');
+        END IF;
+
         INSERT INTO quizzes (
-            topic_id, author_id, title, description, duration_minutes,
+            topic_id, author_id, title, description, timer_mode, duration_minutes,
             show_feedback, access_mode
         ) VALUES (
             p_topic_id, p_actor_id, TRIM(p_title), TRIM(p_description),
-            p_duration_minutes, p_show_feedback, UPPER(p_access_mode)
+            v_timer_mode, p_duration_minutes, p_show_feedback, UPPER(p_access_mode)
         )
         RETURNING quiz_id INTO p_quiz_id;
     EXCEPTION

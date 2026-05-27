@@ -5,6 +5,7 @@ SELECT
     t.title AS topic_title,
     q.title AS quiz_title,
     q.description,
+    q.timer_mode,
     q.duration_minutes,
     q.show_feedback,
     q.access_mode,
@@ -17,7 +18,7 @@ JOIN topics t ON t.topic_id = q.topic_id
 JOIN app_users u ON u.user_id = q.author_id
 LEFT JOIN questions qu ON qu.quiz_id = q.quiz_id
 GROUP BY
-    q.quiz_id, q.topic_id, t.title, q.title, q.description, q.duration_minutes,
+    q.quiz_id, q.topic_id, t.title, q.title, q.description, q.timer_mode, q.duration_minutes,
     q.show_feedback, q.access_mode, q.status, u.full_name;
 
 CREATE OR REPLACE VIEW v_attempt_history AS
