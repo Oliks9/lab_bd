@@ -50,8 +50,15 @@ class QuizApplication(tk.Tk):
 
     def clear_page(self):
         self.cancel_timer()
+        self.unbind("<Return>")
         for widget in self.page.winfo_children():
             widget.destroy()
+
+    def set_enter_action(self, action):
+        self.unbind("<Return>")
+        if action is None:
+            return
+        self.bind("<Return>", lambda _event: action())
 
     def panel(self, parent, padding=20):
         outer = tk.Frame(parent, bg=COLORS["panel"], highlightthickness=1, highlightbackground=COLORS["line"])
@@ -151,6 +158,8 @@ class QuizApplication(tk.Tk):
                 self.report_error(exc)
 
         ttk.Button(form, text="Подключиться", style="Primary.TButton", command=connect).grid(row=5, column=0, columnspan=2, sticky="w")
+        self.set_enter_action(connect)
+        dsn.focus_set()
 
     def show_auth(self):
         self.show_login_page()
@@ -200,8 +209,7 @@ class QuizApplication(tk.Tk):
         ttk.Button(actions, text="Зарегистрироваться", style="Quiet.TButton", command=self.show_register_page).pack(side="left")
         ttk.Button(actions, text="Изменить подключение Oracle", style="Quiet.TButton", command=self.show_connection).pack(side="right")
         login_value.focus_set()
-        password_value.bind("<Return>", authenticate)
-        login_value.bind("<Return>", authenticate)
+        self.set_enter_action(authenticate)
 
     def show_register_page(self):
         form = self.auth_panel("Регистрация", "Создайте учетную запись участника.")
@@ -238,8 +246,7 @@ class QuizApplication(tk.Tk):
         ttk.Button(actions, text="У меня уже есть аккаунт", style="Quiet.TButton", command=self.show_login_page).pack(side="left")
         ttk.Button(actions, text="Изменить подключение Oracle", style="Quiet.TButton", command=self.show_connection).pack(side="right")
         full_name.focus_set()
-        confirm_password.bind("<Return>", register_user)
-        new_password.bind("<Return>", register_user)
+        self.set_enter_action(register_user)
 
     def logout(self):
         self.user = None
@@ -347,6 +354,7 @@ class QuizApplication(tk.Tk):
         tree.bind("<<TreeviewSelect>>", show_selected)
         tree.bind("<Double-1>", lambda _event: start_selected())
         ttk.Button(footer, text="Начать выбранный тест", style="Primary.TButton", command=start_selected).pack(side="right")
+        self.set_enter_action(start_selected)
         load_catalog()
 
     def start_quiz_screen(self, attempt_id):
@@ -734,8 +742,7 @@ class QuizApplication(tk.Tk):
         next_text = "Завершить и показать результат" if self.active_index + 1 == total else "Сохранить ответ и дальше"
         ttk.Button(actions, text=next_text, style="Primary.TButton", command=submit_and_continue).pack(side="right")
         ttk.Button(actions, text="Завершить тест", style="Quiet.TButton", command=finish_by_user).pack(side="right", padx=(0, 10))
-        if text_entry is not None:
-            text_entry.bind("<Return>", lambda _event: submit_and_continue())
+        self.set_enter_action(submit_and_continue)
 
     def update_timer(self, label):
         if self.remaining_seconds is None:
