@@ -1168,9 +1168,13 @@ class QuizApplication(tk.Tk):
 
         def archive_quiz():
             if not tree.selection():
-                messagebox.showwarning("Тест", "Выберите опубликованный тест в таблице.")
+                messagebox.showwarning("Тест", "Выберите тест в таблице.")
                 return
-            if not messagebox.askyesno("Архивировать тест", "Снять тест с публикации? Результаты прохождений сохранятся."):
+            if not messagebox.askyesno(
+                "Скрыть тест",
+                "Снять тест с публикации и вернуть его в черновик для редактирования?\n"
+                "Результаты прохождений сохранятся.",
+            ):
                 return
             try:
                 self.gateway.archive_quiz(self.user.user_id, int(tree.selection()[0]))
@@ -1180,8 +1184,8 @@ class QuizApplication(tk.Tk):
 
         if self.user.role_code in ("ADMIN", "AUTHOR"):
             ttk.Button(actions, text="Удалить тест", style="Danger.TButton", command=delete_quiz).pack(side="right", padx=(0, 9))
-        if self.user.role_code == "ADMIN":
-            ttk.Button(actions, text="Архивировать", style="Quiet.TButton", command=archive_quiz).pack(side="right", padx=(0, 9))
+        if self.user.role_code in ("ADMIN", "AUTHOR"):
+            ttk.Button(actions, text="Скрыть в черновик", style="Quiet.TButton", command=archive_quiz).pack(side="right", padx=(0, 9))
 
     def build_admin_statistics(self, notebook):
         tab = ttk.Frame(notebook, style="App.TFrame", padding=16)

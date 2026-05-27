@@ -448,13 +448,13 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
         p_quiz_id IN NUMBER
     ) IS
     BEGIN
-        require_admin(p_admin_id);
+        require_quiz_manager(p_admin_id, p_quiz_id);
         UPDATE quizzes
-           SET status = 'ARCHIVED'
+           SET status = 'DRAFT'
          WHERE quiz_id = p_quiz_id
-           AND status = 'PUBLISHED';
+           AND status IN ('PUBLISHED', 'ARCHIVED');
         IF SQL%ROWCOUNT = 0 THEN
-            RAISE_APPLICATION_ERROR(-20120, 'Архивировать можно только опубликованный тест.');
+            RAISE_APPLICATION_ERROR(-20120, 'Скрыть можно только опубликованный или архивный тест.');
         END IF;
     END;
 
