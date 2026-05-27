@@ -1776,20 +1776,45 @@ class QuizApplication(tk.Tk):
                 save_attempt_limit.configure(state="disabled")
                 feedback_hint.configure(text="Опубликованный тест: чтобы изменить настройку, сначала скройте его в черновик.")
 
-        def apply_feedback_setting():
+        def parse_attempt_limit():
+            try:
+                raw_value = attempt_limit_value.get().strip() or "0"
+                parsed = int(raw_value)
+                if parsed < 0 or parsed > 1000:
+                    raise ValueError
+            except ValueError:
+                messagebox.showwarning("Лимит попыток", "Укажите число от 0 до 1000 (0 = без ограничений).")
+                return None
+            return parsed
+
+        def persist_draft_settings(show_success: bool):
             row = selected_quiz()
             if row is None:
-                messagebox.showwarning("Пояснения", "Сначала выберите тест в таблице.")
-                return
+                messagebox.showwarning("Настройки", "Сначала выберите тест в таблице.")
+                return False
             if row["status"] != "DRAFT":
-                messagebox.showwarning("Пояснения", "Изменять настройку можно только у черновика.")
-                return
+                messagebox.showwarning("Настройки", "Изменять настройки можно только у черновика.")
+                return False
+            parsed = parse_attempt_limit()
+            if parsed is None:
+                return False
             try:
                 self.gateway.set_quiz_feedback(self.user.user_id, row["quiz_id"], int(feedback_var.get()))
-                messagebox.showinfo("Пояснения", "Настройка черновика сохранена.")
-                self.show_admin("Публикация")
+                self.gateway.set_quiz_attempt_limit(
+                    self.user.user_id,
+                    row["quiz_id"],
+                    parsed if parsed > 0 else None,
+                )
+                if show_success:
+                    messagebox.showinfo("Настройки", "Настройки черновика сохранены.")
+                return True
             except Exception as exc:
                 self.report_error(exc)
+                return False
+
+        def apply_feedback_setting():
+            if persist_draft_settings(show_success=True):
+                self.show_admin("Публикация")
 
         save_feedback = ttk.Button(
             settings,
@@ -1800,30 +1825,8 @@ class QuizApplication(tk.Tk):
         save_feedback.pack(anchor="w", pady=(8, 0))
 
         def apply_attempt_limit_setting():
-            row = selected_quiz()
-            if row is None:
-                messagebox.showwarning("Лимит попыток", "Сначала выберите тест в таблице.")
-                return
-            if row["status"] != "DRAFT":
-                messagebox.showwarning("Лимит попыток", "Изменять лимит попыток можно только у черновика.")
-                return
-            try:
-                parsed = int(attempt_limit_value.get().strip())
-                if parsed < 0 or parsed > 1000:
-                    raise ValueError
-            except ValueError:
-                messagebox.showwarning("Лимит попыток", "Укажите число от 0 до 1000 (0 = без ограничений).")
-                return
-            try:
-                self.gateway.set_quiz_attempt_limit(
-                    self.user.user_id,
-                    row["quiz_id"],
-                    parsed if parsed > 0 else None,
-                )
-                messagebox.showinfo("Лимит попыток", "Лимит попыток для черновика сохранен.")
+            if persist_draft_settings(show_success=True):
                 self.show_admin("Публикация")
-            except Exception as exc:
-                self.report_error(exc)
 
         save_attempt_limit = ttk.Button(
             settings,
@@ -1836,6 +1839,10 @@ class QuizApplication(tk.Tk):
         def publish():
             if not tree.selection():
                 return
+            row = selected_quiz()
+            if row and row["status"] == "DRAFT":
+                if not persist_draft_settings(show_success=False):
+                    return
             try:
                 self.gateway.publish_quiz(self.user.user_id, int(tree.selection()[0]))
                 messagebox.showinfo("Публикация", "Тест опубликован и доступен в каталоге.")
