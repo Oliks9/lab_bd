@@ -1843,11 +1843,15 @@ class QuizApplication(tk.Tk):
 
         actions = ttk.Frame(tab, style="App.TFrame")
         actions.pack(fill="x", pady=(12, 0))
-        ttk.Button(actions, text=self.icon_text("publish", "Опубликовать выбранный тест"), style="Primary.TButton", command=publish).pack(side="right")
+        state_row = ttk.Frame(actions, style="Panel.TFrame")
+        state_row.pack(fill="x")
+        ttk.Button(state_row, text=self.icon_text("publish", "Опубликовать выбранный тест"), style="Primary.TButton", command=publish).pack(side="left")
         restricted = [row for row in quizzes if row["access_mode"] == "RESTRICTED"]
         users = self.gateway.users()
-        access_quiz = ttk.Combobox(actions, values=[f"{row['quiz_id']} | {row['title']}" for row in restricted], state="readonly", width=29)
-        access_user = ttk.Combobox(actions, values=[f"{row['user_id']} | {row['login']}" for row in users], state="readonly", width=24)
+        access_row = ttk.Frame(actions, style="Panel.TFrame")
+        access_row.pack(fill="x", pady=(10, 0))
+        access_quiz = ttk.Combobox(access_row, values=[f"{row['quiz_id']} | {row['title']}" for row in restricted], state="readonly", width=29)
+        access_user = ttk.Combobox(access_row, values=[f"{row['user_id']} | {row['login']}" for row in users], state="readonly", width=24)
         access_quiz.pack(side="left", padx=(0, 7))
         access_user.pack(side="left", padx=(0, 7))
         if restricted:
@@ -1869,7 +1873,7 @@ class QuizApplication(tk.Tk):
             except Exception as exc:
                 self.report_error(exc)
 
-        ttk.Button(actions, text=self.icon_text("grant", "Выдать доступ"), style="Quiet.TButton", command=grant_access).pack(side="left")
+        ttk.Button(access_row, text=self.icon_text("grant", "Выдать доступ"), style="Quiet.TButton", command=grant_access).pack(side="left", padx=(7, 0))
 
         def delete_quiz():
             if not tree.selection():
@@ -1904,9 +1908,8 @@ class QuizApplication(tk.Tk):
                 self.report_error(exc)
 
         if self.user.role_code in ("ADMIN", "AUTHOR"):
-            ttk.Button(actions, text=self.icon_text("delete", "Удалить тест"), style="Danger.TButton", command=delete_quiz).pack(side="right", padx=(0, 9))
-        if self.user.role_code in ("ADMIN", "AUTHOR"):
-            ttk.Button(actions, text=self.icon_text("hide", "Скрыть в черновик"), style="Quiet.TButton", command=archive_quiz).pack(side="right", padx=(0, 9))
+            ttk.Button(state_row, text=self.icon_text("hide", "Скрыть в черновик"), style="Quiet.TButton", command=archive_quiz).pack(side="left", padx=(9, 0))
+            ttk.Button(state_row, text=self.icon_text("delete", "Удалить тест"), style="Danger.TButton", command=delete_quiz).pack(side="left", padx=(9, 0))
         tree.bind("<<TreeviewSelect>>", refresh_feedback_controls)
         refresh_feedback_controls()
 
