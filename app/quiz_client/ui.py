@@ -422,21 +422,92 @@ class QuizApplication(tk.Tk):
             justify="left",
         ).pack(anchor="w", pady=(0, 14))
         type_code = question["type_code"]
-        selected_radio = tk.IntVar(value=-1)
-        selected_checks = {}
-        text_value = ttk.Entry(card, width=75)
+        text_entry = None
         ordering_state = []
+        selected_state = {"single": None, "multi": set()}
+
+        def build_choice_cards(options, allow_multi=False):
+            shell = tk.Frame(card, bg=COLORS["panel_alt"], highlightthickness=1, highlightbackground=COLORS["line"])
+            shell.pack(fill="x", pady=(0, 8))
+            body = tk.Frame(shell, bg=COLORS["panel_alt"])
+            body.pack(fill="x", padx=8, pady=8)
+
+            def refresh():
+                for child in body.winfo_children():
+                    child.destroy()
+                for idx, option in enumerate(options, 1):
+                    option_id = option["option_id"]
+                    is_selected = option_id in selected_state["multi"] if allow_multi else selected_state["single"] == option_id
+                    row_bg = COLORS["blue_soft"] if is_selected else "#ffffff"
+                    border = COLORS["brand"] if is_selected else COLORS["line"]
+                    marker_bg = COLORS["brand"] if is_selected else "#ffffff"
+                    marker_fg = "#ffffff" if is_selected else COLORS["muted"]
+                    marker_text = "✓" if allow_multi else "●"
+                    if not is_selected:
+                        marker_text = "○" if not allow_multi else "+"
+
+                    row = tk.Frame(
+                        body,
+                        bg=row_bg,
+                        highlightthickness=1,
+                        highlightbackground=border,
+                        padx=10,
+                        pady=8,
+                        cursor="hand2",
+                    )
+                    row.pack(fill="x", pady=4)
+                    marker = tk.Label(
+                        row,
+                        text=marker_text,
+                        bg=marker_bg,
+                        fg=marker_fg,
+                        width=2,
+                        font=("Segoe UI", 10, "bold"),
+                        padx=4,
+                    )
+                    marker.pack(side="left")
+                    number = tk.Label(
+                        row,
+                        text=str(idx),
+                        bg=row_bg,
+                        fg=COLORS["muted"],
+                        font=("Segoe UI", 9, "bold"),
+                        padx=10,
+                    )
+                    number.pack(side="left")
+                    caption = tk.Label(
+                        row,
+                        text=option["option_text"],
+                        bg=row_bg,
+                        fg=COLORS["ink"],
+                        font=("Segoe UI", 10),
+                        anchor="w",
+                        justify="left",
+                    )
+                    caption.pack(side="left", fill="x", expand=True)
+
+                    def on_pick(_event=None, picked_id=option_id):
+                        if allow_multi:
+                            if picked_id in selected_state["multi"]:
+                                selected_state["multi"].remove(picked_id)
+                            else:
+                                selected_state["multi"].add(picked_id)
+                        else:
+                            selected_state["single"] = picked_id
+                        refresh()
+
+                    for widget in (row, marker, number, caption):
+                        widget.bind("<Button-1>", on_pick)
+
+            refresh()
+
         if type_code in ("SINGLE_CHOICE", "BOOLEAN", "MULTIPLE_CHOICE"):
             options = self.gateway.question_options(question["question_id"])
             if type_code == "MULTIPLE_CHOICE":
                 ttk.Label(card, text="Можно выбрать несколько вариантов.", style="Muted.TLabel").pack(anchor="w", pady=(0, 8))
-            for option in options:
-                if type_code == "MULTIPLE_CHOICE":
-                    variable = tk.BooleanVar(value=False)
-                    selected_checks[option["option_id"]] = variable
-                    ttk.Checkbutton(card, text=option["option_text"], variable=variable).pack(anchor="w", pady=6)
-                else:
-                    ttk.Radiobutton(card, text=option["option_text"], variable=selected_radio, value=option["option_id"]).pack(anchor="w", pady=6)
+                build_choice_cards(options, allow_multi=True)
+            else:
+                build_choice_cards(options, allow_multi=False)
         elif type_code == "ORDERING":
             options = self.gateway.question_options(question["question_id"])
             if len(options) < 2:
@@ -452,8 +523,8 @@ class QuizApplication(tk.Tk):
                 wrapper.pack(fill="x", pady=(0, 4))
                 list_shell = tk.Frame(wrapper, bg=COLORS["panel_alt"], highlightthickness=1, highlightbackground=COLORS["line"])
                 list_shell.pack(side="left", fill="both", expand=True)
-                row_height = 52
-                max_rows = min(max(len(options), 4), 9)
+                row_height = 48
+                max_rows = min(max(len(options), 3), 7)
                 list_canvas = tk.Canvas(
                     list_shell,
                     bg=COLORS["panel_alt"],
@@ -476,7 +547,7 @@ class QuizApplication(tk.Tk):
                 if len(ordering_state) > 1 and [row["option_id"] for row in ordering_state] == baseline:
                     random.shuffle(ordering_state)
                 drag_state = {"index": None}
-                selected_state = {"index": 0}
+                selected_order = {"index": 0}
 
                 def on_holder_configure(_event=None):
                     list_canvas.configure(scrollregion=list_canvas.bbox("all"))
@@ -498,11 +569,11 @@ class QuizApplication(tk.Tk):
                     return None
 
                 def refresh_ordering_cards():
-                    selected_state["index"] = clamp_index(selected_state["index"])
+                    selected_order["index"] = clamp_index(selected_order["index"])
                     for child in rows_holder.winfo_children():
                         child.destroy()
                     for idx, row in enumerate(ordering_state):
-                        active = idx == selected_state["index"]
+                        active = idx == selected_order["index"]
                         row_bg = COLORS["blue_soft"] if active else "#ffffff"
                         border = COLORS["brand"] if active else COLORS["line"]
                         row_frame = tk.Frame(
@@ -529,7 +600,7 @@ class QuizApplication(tk.Tk):
                         badge.pack(side="left")
                         handle = tk.Label(
                             row_frame,
-                            text="⋮⋮",
+                            text="≡",
                             bg=row_bg,
                             fg=COLORS["muted"],
                             font=("Segoe UI", 10, "bold"),
@@ -565,12 +636,12 @@ class QuizApplication(tk.Tk):
                 def move_ordering(step):
                     if not ordering_state:
                         return
-                    source = clamp_index(selected_state["index"])
+                    source = clamp_index(selected_order["index"])
                     target = source + step
                     if target < 0 or target >= len(ordering_state):
                         return
                     ordering_state[source], ordering_state[target] = ordering_state[target], ordering_state[source]
-                    selected_state["index"] = target
+                    selected_order["index"] = target
                     refresh_ordering_cards()
 
                 def on_drag_start(event):
@@ -578,7 +649,7 @@ class QuizApplication(tk.Tk):
                     if row_widget is None:
                         return
                     index = clamp_index(row_widget._ordering_index)
-                    selected_state["index"] = index
+                    selected_order["index"] = index
                     drag_state["index"] = index
                     refresh_ordering_cards()
 
@@ -592,7 +663,7 @@ class QuizApplication(tk.Tk):
                     moved = ordering_state.pop(source)
                     ordering_state.insert(target, moved)
                     drag_state["index"] = target
-                    selected_state["index"] = target
+                    selected_order["index"] = target
                     refresh_ordering_cards()
 
                 def on_drag_end(_event):
@@ -605,7 +676,7 @@ class QuizApplication(tk.Tk):
                     random.shuffle(ordering_state)
                     if [row["option_id"] for row in ordering_state] == baseline:
                         random.shuffle(ordering_state)
-                    selected_state["index"] = 0
+                    selected_order["index"] = 0
                     refresh_ordering_cards()
 
                 ttk.Button(controls, text="Вверх", style="Quiet.TButton", command=lambda: move_ordering(-1)).pack(fill="x")
@@ -617,7 +688,10 @@ class QuizApplication(tk.Tk):
         else:
             prompt = "Введите ответ"
             ttk.Label(card, text=prompt, style="Card.TLabel").pack(anchor="w", pady=(0, 7))
-            text_value.pack(fill="x", anchor="w")
+            input_shell = tk.Frame(card, bg=COLORS["panel_alt"], highlightthickness=1, highlightbackground=COLORS["line"])
+            input_shell.pack(fill="x")
+            text_entry = ttk.Entry(input_shell, width=75)
+            text_entry.pack(fill="x", padx=10, pady=10)
 
         actions = ttk.Frame(card, style="Panel.TFrame")
         actions.pack(fill="x", side="bottom", pady=(28, 0))
@@ -626,15 +700,15 @@ class QuizApplication(tk.Tk):
             selected_ids = ""
             answer_text = ""
             if type_code == "MULTIPLE_CHOICE":
-                selected = [str(option_id) for option_id, value in selected_checks.items() if value.get()]
+                selected = [str(option_id) for option_id in sorted(selected_state["multi"])]
                 selected_ids = ",".join(selected)
             elif type_code in ("SINGLE_CHOICE", "BOOLEAN"):
-                if selected_radio.get() != -1:
-                    selected_ids = str(selected_radio.get())
+                if selected_state["single"] is not None:
+                    selected_ids = str(selected_state["single"])
             elif type_code == "ORDERING":
                 selected_ids = ",".join(str(row["option_id"]) for row in ordering_state)
             else:
-                answer_text = text_value.get().strip()
+                answer_text = text_entry.get().strip() if text_entry is not None else ""
             if not selected_ids and not answer_text:
                 messagebox.showwarning("Ответ", "Введите или выберите ответ перед продолжением.")
                 return
@@ -660,7 +734,8 @@ class QuizApplication(tk.Tk):
         next_text = "Завершить и показать результат" if self.active_index + 1 == total else "Сохранить ответ и дальше"
         ttk.Button(actions, text=next_text, style="Primary.TButton", command=submit_and_continue).pack(side="right")
         ttk.Button(actions, text="Завершить тест", style="Quiet.TButton", command=finish_by_user).pack(side="right", padx=(0, 10))
-        text_value.bind("<Return>", lambda _event: submit_and_continue())
+        if text_entry is not None:
+            text_entry.bind("<Return>", lambda _event: submit_and_continue())
 
     def update_timer(self, label):
         if self.remaining_seconds is None:
