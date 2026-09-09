@@ -113,8 +113,8 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
         IF v_timer_mode NOT IN ('QUIZ', 'QUESTION') THEN
             RAISE_APPLICATION_ERROR(-20124, 'Режим времени должен быть QUIZ или QUESTION.');
         END IF;
-        IF v_attempt_limit IS NOT NULL AND v_attempt_limit <= 0 THEN
-            RAISE_APPLICATION_ERROR(-20129, 'Лимит попыток должен быть положительным числом или NULL.');
+        IF v_attempt_limit IS NOT NULL AND (v_attempt_limit < 1 OR v_attempt_limit > 1000 OR v_attempt_limit <> TRUNC(v_attempt_limit)) THEN
+            RAISE_APPLICATION_ERROR(-20129, 'Лимит попыток должен быть целым числом от 1 до 1000 или NULL.');
         END IF;
 
         INSERT INTO quizzes (
@@ -309,8 +309,8 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
     ) IS
     BEGIN
         require_quiz_owner(p_actor_id, p_quiz_id);
-        IF p_attempt_limit IS NOT NULL AND p_attempt_limit <= 0 THEN
-            RAISE_APPLICATION_ERROR(-20130, 'Лимит попыток должен быть положительным числом или NULL.');
+        IF p_attempt_limit IS NOT NULL AND (p_attempt_limit < 1 OR p_attempt_limit > 1000 OR p_attempt_limit <> TRUNC(p_attempt_limit)) THEN
+            RAISE_APPLICATION_ERROR(-20130, 'Лимит попыток должен быть целым числом от 1 до 1000 или NULL.');
         END IF;
 
         UPDATE quizzes

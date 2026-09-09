@@ -5,7 +5,7 @@
 ## Ключевая идея
 
 - Oracle отвечает за бизнес-логику: права, валидацию, таймеры, оценивание, публикацию, удаление, ограничения целостности.
-- Python не дублирует критичные правила, а вызывает процедуры/пакеты Oracle и показывает результат пользователю.
+- Python отображает формы, проверяет ввод и вызывает API Oracle. Оценивание, ограничения и изменения данных выполняются в БД; SQL-запросы из `database.py` тоже исполняются сервером Oracle.
 
 ## Основные возможности
 
@@ -19,7 +19,6 @@
 - Ограничение числа попыток на пользователя (`attempt_limit`).
 - Настройка показа правильных ответов и пояснений (`show_feedback`).
 - Удаление тестов/вопросов с пересчетом связанных данных.
-- Админ-функции: создание авторов, роли, смена пароля пользователя, удаление пользователя, сброс прогресса.
 - Админ-функции: создание авторов, роли, смена пароля пользователя, отключение/включение аккаунта, удаление пользователя, сброс прогресса.
 
 ## Дефолтный администратор
@@ -87,8 +86,21 @@ powershell -ExecutionPolicy Bypass -File .\docker\start.ps1
 ```text
 DSN: localhost:1521/FREEPDB1
 Schema user: quiz_app
-Schema password: QuizSchema2026
+Schema password: P@ssw0rd
 ```
+
+Если Docker-том создан со старым паролем схемы, один раз выполните смену пароля,
+затем обновите модули. Данные сохраняются:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\docker\change_schema_password.ps1
+powershell -ExecutionPolicy Bypass -File .\docker\upgrade.ps1
+```
+
+Скрипт меняет только пароль Oracle-схемы `quiz_app`. Пароли пользователей приложения
+хранятся отдельно в `app_users`; существующий пароль администратора не сбрасывается.
+`admin / Admin123!` выше относится к новой установке. Для существующей базы используйте
+пароль администратора, который установили ранее.
 
 ## Запуск из исходников
 
@@ -109,7 +121,7 @@ powershell -ExecutionPolicy Bypass -File .\build\build_exe.ps1 -Python .\.venv\S
 Проверка подключения в headless-режиме:
 
 ```powershell
-.\dist\OracleQuizPlatform.exe --connection-check "localhost:1521/FREEPDB1" "quiz_app" "QuizSchema2026" "admin" "Admin123!"
+.\dist\OracleQuizPlatform.exe --connection-check "localhost:1521/FREEPDB1" "quiz_app" "P@ssw0rd" "admin" "Admin123!"
 $LASTEXITCODE
 ```
 
@@ -128,3 +140,4 @@ $LASTEXITCODE
 - `docs/03_validation_and_demo_scenarios.md` — сценарии проверки и демонстрации на защите.
 - `docs/04_role_matrix_and_permissions.md` — матрица прав и привязка к конкретным процедурам.
 - `docs/05_release_notes.md` — журнал изменений по версиям.
+- `docs/06_oracle_logic_audit.md` — распределение логики между Oracle и Python, исправления и границы архитектуры.

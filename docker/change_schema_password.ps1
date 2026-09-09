@@ -5,9 +5,9 @@ New-Item -ItemType Directory -Force -Path $env:DOCKER_CONFIG | Out-Null
 
 Push-Location $ProjectRoot
 try {
-    docker compose exec -T oracle sqlplus -s /nolog "@/opt/quiz-project/docker/upgrade_application.sql"
+    docker compose exec -T oracle sqlplus -s "/ as sysdba" "@/opt/quiz-project/docker/change_schema_password.sql"
     if ($LASTEXITCODE -ne 0) {
-        throw "Oracle upgrade failed (exit code $LASTEXITCODE)."
+        throw "Schema password change failed (exit code $LASTEXITCODE)."
     }
 }
 finally {

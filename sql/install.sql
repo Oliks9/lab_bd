@@ -16,7 +16,6 @@ PROMPT === Creating standalone functions ===
 
 PROMPT === Creating account procedures ===
 @@03_procedures/pr_register_user.sql
-@@03_procedures/pr_login.sql
 
 PROMPT === Creating validation and audit triggers ===
 @@04_triggers/trg_app_users_biu.sql
@@ -27,6 +26,7 @@ PROMPT === Creating validation and audit triggers ===
 PROMPT === Creating business packages ===
 @@05_packages/pkg_testing.pks
 @@05_packages/pkg_testing.pkb
+@@03_procedures/pr_login.sql
 @@05_packages/pkg_admin.pks
 @@05_packages/pkg_admin.pkb
 

@@ -20,6 +20,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
                SET active_question_order = v_total_questions + 1,
                    question_started_at = NULL
              WHERE attempt_id = p_attempt_id;
+            finish_attempt(p_attempt_id);
         END IF;
     END;
 
@@ -35,8 +36,22 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
         v_user_attempt_count NUMBER;
         v_count NUMBER;
     BEGIN
+        -- Serialize starts for one user before checking active attempts and limits.
+        BEGIN
+            SELECT user_id INTO v_count FROM app_users
+             WHERE user_id = p_user_id AND is_active = 1 FOR UPDATE;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                RAISE_APPLICATION_ERROR(-20200, 'User is unavailable.');
+        END;
         IF fn_can_access_quiz(p_user_id, p_quiz_id) = 0 THEN
             RAISE_APPLICATION_ERROR(-20200, 'Quiz is unavailable or not published.');
+        END IF;
+
+        SELECT COUNT(*) INTO v_count FROM attempts
+         WHERE user_id = p_user_id AND status = 'IN_PROGRESS';
+        IF v_count > 0 THEN
+            RAISE_APPLICATION_ERROR(-20213, 'User already has an active attempt.');
         END IF;
 
         SELECT duration_minutes, question_limit, timer_mode, attempt_limit
@@ -267,6 +282,16 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
 
         IF v_timer_mode = 'QUESTION' THEN
             advance_active_question(p_attempt_id, v_active_order);
+        ELSE
+            SELECT COUNT(*) INTO v_token_count FROM attempt_questions aq
+             WHERE aq.attempt_id = p_attempt_id
+               AND NOT EXISTS (
+                   SELECT 1 FROM user_answers ua
+                    WHERE ua.attempt_id = aq.attempt_id AND ua.question_id = aq.question_id
+               );
+            IF v_token_count = 0 THEN
+                finish_attempt(p_attempt_id);
+            END IF;
         END IF;
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
@@ -279,9 +304,11 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
         v_status attempts.status%TYPE;
         v_timer_mode attempts.timer_mode%TYPE;
         v_active_order attempts.active_question_order%TYPE;
+        v_started attempts.question_started_at%TYPE;
+        v_duration attempts.question_duration_minutes%TYPE;
     BEGIN
-        SELECT status, timer_mode, active_question_order
-          INTO v_status, v_timer_mode, v_active_order
+        SELECT status, timer_mode, active_question_order, question_started_at, question_duration_minutes
+          INTO v_status, v_timer_mode, v_active_order, v_started, v_duration
           FROM attempts
          WHERE attempt_id = p_attempt_id
          FOR UPDATE OF status, active_question_order, question_started_at;
@@ -292,11 +319,16 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
         IF v_timer_mode <> 'QUESTION' THEN
             RAISE_APPLICATION_ERROR(-20210, 'Auto-advance is available only in QUESTION timer mode.');
         END IF;
-        IF v_active_order IS NULL THEN
+        IF v_active_order IS NULL OR v_started IS NULL THEN
             RETURN;
+        END IF;
+        IF v_duration IS NULL OR SYSTIMESTAMP < v_started + NUMTODSINTERVAL(v_duration, 'MINUTE') THEN
+            RAISE_APPLICATION_ERROR(-20212, 'Question time has not expired yet.');
         END IF;
 
         advance_active_question(p_attempt_id, v_active_order);
+        UPDATE attempts SET status = 'EXPIRED'
+         WHERE attempt_id = p_attempt_id AND status = 'FINISHED';
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
             RAISE_APPLICATION_ERROR(-20207, 'Attempt not found.');
@@ -359,7 +391,13 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
     PROCEDURE abandon_attempt (
         p_attempt_id IN NUMBER
     ) IS
+        v_status attempts.status%TYPE;
     BEGIN
+        SELECT status INTO v_status FROM attempts
+         WHERE attempt_id = p_attempt_id FOR UPDATE;
+        IF v_status <> 'IN_PROGRESS' THEN
+            RETURN;
+        END IF;
         finish_attempt(p_attempt_id);
         UPDATE attempts
            SET status = 'EXPIRED'

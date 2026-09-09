@@ -61,6 +61,11 @@ BEGIN
      GROUP BY q.question_id;
     pkg_testing.submit_answer(v_attempt_id, v_question_id, v_option_ids, NULL);
 
+    SELECT COUNT(*) INTO v_score FROM attempts
+     WHERE attempt_id = v_attempt_id AND status = 'FINISHED';
+    IF v_score <> 1 THEN
+        RAISE_APPLICATION_ERROR(-20997, 'The final answer did not finish the attempt in Oracle.');
+    END IF;
     pkg_testing.finish_attempt(v_attempt_id);
     SELECT score_percent INTO v_score FROM attempts WHERE attempt_id = v_attempt_id;
 

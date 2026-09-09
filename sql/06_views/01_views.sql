@@ -52,7 +52,8 @@ SELECT
     q.question_id,
     q.question_text,
     q.type_code,
-    q.explanation,
+    CASE WHEN quiz.show_feedback = 1 AND a.status IN ('FINISHED', 'EXPIRED')
+         THEN q.explanation END AS explanation,
     q.points,
     ua.text_answer,
     ua.is_correct,
@@ -77,6 +78,7 @@ SELECT
         ELSE ua.text_answer
     END AS given_answer,
     CASE
+        WHEN quiz.show_feedback = 0 OR a.status = 'IN_PROGRESS' THEN NULL
         WHEN q.type_code = 'ORDERING' THEN
             (SELECT LISTAGG(qo.option_text, ' -> ') WITHIN GROUP (ORDER BY qo.seq_no)
                FROM question_options qo
@@ -90,6 +92,8 @@ SELECT
     END AS correct_answer
 FROM attempt_questions aq
 JOIN questions q ON q.question_id = aq.question_id
+JOIN quizzes quiz ON quiz.quiz_id = q.quiz_id
+JOIN attempts a ON a.attempt_id = aq.attempt_id
 LEFT JOIN user_answers ua
   ON ua.attempt_id = aq.attempt_id
  AND ua.question_id = aq.question_id;

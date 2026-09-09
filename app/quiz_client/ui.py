@@ -30,33 +30,6 @@ SPACING = {
     "md": 16,
     "lg": 24,
 }
-ACTION_ICONS = {
-    "connect": "↗",
-    "login": "→",
-    "logout": "↩",
-    "register": "+",
-    "start": "▶",
-    "save": "✓",
-    "finish": "■",
-    "publish": "↑",
-    "hide": "↓",
-    "delete": "×",
-    "grant": "→",
-    "reset": "↺",
-    "catalog": "☰",
-    "history": "◷",
-    "studio": "✎",
-    "open": "↦",
-    "add": "+",
-    "clear": "⟲",
-    "up": "↑",
-    "down": "↓",
-    "shuffle": "⇅",
-    "author": "✦",
-    "user": "•",
-    "disable": "⛔",
-    "enable": "✓",
-}
 
 
 class QuizApplication(tk.Tk):
@@ -135,10 +108,6 @@ class QuizApplication(tk.Tk):
 
         animate_in()
         self.toast_hide_job = self.after(duration_ms, hide)
-
-    def icon_text(self, key: str, text: str) -> str:
-        icon = ACTION_ICONS.get(key, "")
-        return f"{icon} {text}".strip()
 
     def tone_for_status(self, status_code: str) -> str:
         if status_code == "DRAFT":
@@ -225,11 +194,11 @@ class QuizApplication(tk.Tk):
         if with_navigation and self.user:
             nav = ttk.Frame(header, style="Panel.TFrame")
             nav.pack(side="right", anchor="n")
-            ttk.Button(nav, text=self.icon_text("catalog", "Каталог"), style="Nav.TButton", command=self.show_catalog).pack(side="left", padx=3)
-            ttk.Button(nav, text=self.icon_text("history", "Мои результаты"), style="Nav.TButton", command=self.show_history).pack(side="left", padx=3)
+            ttk.Button(nav, text="Каталог", style="Nav.TButton", command=self.show_catalog).pack(side="left", padx=3)
+            ttk.Button(nav, text="Мои результаты", style="Nav.TButton", command=self.show_history).pack(side="left", padx=3)
             if self.user.role_code in ("ADMIN", "AUTHOR"):
-                ttk.Button(nav, text=self.icon_text("studio", "Студия тестов"), style="Nav.TButton", command=self.show_admin).pack(side="left", padx=3)
-            ttk.Button(nav, text=self.icon_text("logout", "Выйти"), style="Quiet.TButton", command=self.logout).pack(side="left", padx=(12, 0))
+                ttk.Button(nav, text="Студия тестов", style="Nav.TButton", command=self.show_admin).pack(side="left", padx=3)
+            ttk.Button(nav, text="Выйти", style="Quiet.TButton", command=self.logout).pack(side="left", padx=(12, 0))
 
     def add_chip_row(self, parent, chips):
         row = tk.Frame(parent, bg=COLORS["panel"])
@@ -287,7 +256,7 @@ class QuizApplication(tk.Tk):
 
         note = (
             "Эти данные используются для соединения с Oracle. "
-            "В Docker-конфигурации оставьте значения по умолчанию и укажите пароль QuizSchema2026."
+            "В Docker-конфигурации оставьте значения по умолчанию и укажите пароль P@ssw0rd."
         )
         ttk.Label(form, text=note, style="Muted.TLabel", wraplength=690, justify="left").grid(
             row=4, column=0, columnspan=2, sticky="w", pady=(15, 18)
@@ -302,7 +271,7 @@ class QuizApplication(tk.Tk):
             except Exception as exc:
                 self.report_error(exc)
 
-        ttk.Button(form, text=self.icon_text("connect", "Подключиться"), style="Primary.TButton", command=connect).grid(row=5, column=0, columnspan=2, sticky="w")
+        ttk.Button(form, text="Подключиться", style="Primary.TButton", command=connect).grid(row=5, column=0, columnspan=2, sticky="w")
         self.set_enter_action(connect)
         dsn.focus_set()
 
@@ -342,7 +311,7 @@ class QuizApplication(tk.Tk):
             except Exception as exc:
                 self.report_error(exc)
 
-        ttk.Button(form, text=self.icon_text("login", "Войти"), style="Primary.TButton", command=authenticate).pack(anchor="w")
+        ttk.Button(form, text="Войти", style="Primary.TButton", command=authenticate).pack(anchor="w")
         ttk.Label(
             form,
             text="Демонстрационный администратор\nadmin / Admin123!",
@@ -351,8 +320,8 @@ class QuizApplication(tk.Tk):
         ).pack(anchor="w", pady=(18, 10))
         actions = ttk.Frame(form, style="Panel.TFrame")
         actions.pack(fill="x")
-        ttk.Button(actions, text=self.icon_text("register", "Зарегистрироваться"), style="Quiet.TButton", command=self.show_register_page).pack(side="left")
-        ttk.Button(actions, text=self.icon_text("connect", "Изменить подключение Oracle"), style="Quiet.TButton", command=self.show_connection).pack(side="right")
+        ttk.Button(actions, text="Зарегистрироваться", style="Quiet.TButton", command=self.show_register_page).pack(side="left")
+        ttk.Button(actions, text="Изменить подключение Oracle", style="Quiet.TButton", command=self.show_connection).pack(side="right")
         login_value.focus_set()
         self.set_enter_action(authenticate)
 
@@ -385,11 +354,11 @@ class QuizApplication(tk.Tk):
             except Exception as exc:
                 self.report_error(exc)
 
-        ttk.Button(form, text=self.icon_text("register", "Создать учетную запись"), style="Primary.TButton", command=register_user).pack(anchor="w")
+        ttk.Button(form, text="Создать учетную запись", style="Primary.TButton", command=register_user).pack(anchor="w")
         actions = ttk.Frame(form, style="Panel.TFrame")
         actions.pack(fill="x", pady=(10, 0))
-        ttk.Button(actions, text=self.icon_text("login", "У меня уже есть аккаунт"), style="Quiet.TButton", command=self.show_login_page).pack(side="left")
-        ttk.Button(actions, text=self.icon_text("connect", "Изменить подключение Oracle"), style="Quiet.TButton", command=self.show_connection).pack(side="right")
+        ttk.Button(actions, text="У меня уже есть аккаунт", style="Quiet.TButton", command=self.show_login_page).pack(side="left")
+        ttk.Button(actions, text="Изменить подключение Oracle", style="Quiet.TButton", command=self.show_connection).pack(side="right")
         full_name.focus_set()
         self.set_enter_action(register_user)
 
@@ -529,7 +498,7 @@ class QuizApplication(tk.Tk):
 
         tree.bind("<<TreeviewSelect>>", show_selected)
         tree.bind("<Double-1>", lambda _event: start_selected())
-        ttk.Button(footer, text=self.icon_text("start", "Начать выбранный тест"), style="Primary.TButton", command=start_selected).pack(side="right")
+        ttk.Button(footer, text="Начать выбранный тест", style="Primary.TButton", command=start_selected).pack(side="right")
         self.set_enter_action(start_selected)
         load_catalog()
 
@@ -571,6 +540,10 @@ class QuizApplication(tk.Tk):
             self.finish_active_attempt()
             return
         if not self.refresh_timer_state():
+            return
+
+        if self.active_header["status"] != "IN_PROGRESS":
+            self.finish_active_attempt()
             return
 
         question = self.active_questions[self.active_index]
@@ -935,9 +908,9 @@ class QuizApplication(tk.Tk):
                     selected_order["index"] = 0
                     refresh_ordering_cards()
 
-                ttk.Button(controls, text=self.icon_text("up", "Вверх"), style="Quiet.TButton", command=lambda: move_ordering(-1)).pack(fill="x")
-                ttk.Button(controls, text=self.icon_text("down", "Вниз"), style="Quiet.TButton", command=lambda: move_ordering(1)).pack(fill="x", pady=(SPACING["xs"], 0))
-                ttk.Button(controls, text=self.icon_text("shuffle", "Перемешать"), style="Quiet.TButton", command=reshuffle_ordering).pack(fill="x", pady=(SPACING["xs"], 0))
+                ttk.Button(controls, text="Вверх", style="Quiet.TButton", command=lambda: move_ordering(-1)).pack(fill="x")
+                ttk.Button(controls, text="Вниз", style="Quiet.TButton", command=lambda: move_ordering(1)).pack(fill="x", pady=(SPACING["xs"], 0))
+                ttk.Button(controls, text="Перемешать", style="Quiet.TButton", command=reshuffle_ordering).pack(fill="x", pady=(SPACING["xs"], 0))
                 rows_holder.bind("<Configure>", on_holder_configure)
                 list_canvas.bind("<Configure>", on_canvas_configure)
                 refresh_ordering_cards()
@@ -1004,9 +977,8 @@ class QuizApplication(tk.Tk):
                 self.finish_active_attempt()
 
         next_text = "Завершить и показать результат" if self.active_index + 1 == total else "Сохранить ответ и дальше"
-        next_key = "finish" if self.active_index + 1 == total else "save"
-        ttk.Button(actions, text=self.icon_text(next_key, next_text), style="Primary.TButton", command=submit_and_continue).pack(side="right")
-        ttk.Button(actions, text=self.icon_text("finish", "Завершить тест"), style="Quiet.TButton", command=finish_by_user).pack(side="right", padx=(0, SPACING["xs"]))
+        ttk.Button(actions, text=next_text, style="Primary.TButton", command=submit_and_continue).pack(side="right")
+        ttk.Button(actions, text="Завершить тест", style="Quiet.TButton", command=finish_by_user).pack(side="right", padx=(0, SPACING["xs"]))
         if text_entry is not None:
             text_entry.focus_set()
         self.set_enter_action(submit_and_continue)
@@ -1018,6 +990,11 @@ class QuizApplication(tk.Tk):
         minutes, remainder = divmod(seconds, 60)
         label.configure(text=f"{self.timer_caption}: {minutes:02d}:{remainder:02d}")
         if seconds <= 0:
+            if not self.refresh_timer_state():
+                return
+            if self.remaining_seconds > 0:
+                self.timer_job = self.after(1000, lambda: self.update_timer(label))
+                return
             if (self.active_header or {}).get("timer_mode") == "QUESTION":
                 self.handle_question_timeout()
             else:
@@ -1033,10 +1010,17 @@ class QuizApplication(tk.Tk):
         try:
             self.gateway.expire_question(self.active_attempt_id)
         except Exception as exc:
+            if "ORA-20212" in str(exc):
+                self.show_question()
+                return
             self.report_error(exc)
+            return
+        if not self.refresh_timer_state():
+            return
+        if self.active_header["status"] != "IN_PROGRESS":
             self.finish_active_attempt()
             return
-        self.active_index += 1
+        self.active_index = int(self.active_header["active_question_order"]) - 1
         if self.active_index >= len(self.active_questions):
             self.finish_active_attempt()
         else:
@@ -1149,7 +1133,7 @@ class QuizApplication(tk.Tk):
                 values=(result["topic_title"], result["quiz_title"], result["started_at"], result["status"], result["score_percent"] or "-", f"{result['correct_count']}/{result['question_count']}"),
             )
         ttk.Button(
-            self.page, text=self.icon_text("open", "Открыть результат"), style="Primary.TButton",
+            self.page, text="Открыть результат", style="Primary.TButton",
             command=lambda: self.show_result(int(tree.selection()[0])) if tree.selection() else messagebox.showwarning("История", "Выберите попытку."),
         ).pack(anchor="e", pady=(SPACING["sm"], 0))
 
@@ -1298,11 +1282,11 @@ class QuizApplication(tk.Tk):
             except Exception as exc:
                 self.report_error(exc)
 
-        ttk.Button(topic_actions, text=self.icon_text("add", "Добавить"), style="Primary.TButton", command=create_topic).pack(side="left")
-        ttk.Button(category_actions, text=self.icon_text("add", "Добавить"), style="Primary.TButton", command=create_category).pack(side="left")
+        ttk.Button(topic_actions, text="Добавить", style="Primary.TButton", command=create_topic).pack(side="left")
+        ttk.Button(category_actions, text="Добавить", style="Primary.TButton", command=create_category).pack(side="left")
         if self.user.role_code == "ADMIN":
-            ttk.Button(topic_actions, text=self.icon_text("delete", "Удалить выбранную"), style="Danger.TButton", command=delete_topic).pack(side="left", padx=(8, 0))
-            ttk.Button(category_actions, text=self.icon_text("delete", "Удалить выбранную"), style="Danger.TButton", command=delete_category).pack(side="left", padx=(8, 0))
+            ttk.Button(topic_actions, text="Удалить выбранную", style="Danger.TButton", command=delete_topic).pack(side="left", padx=(8, 0))
+            ttk.Button(category_actions, text="Удалить выбранную", style="Danger.TButton", command=delete_category).pack(side="left", padx=(8, 0))
         topic_combo.bind("<<ComboboxSelected>>", refresh_categories)
         topic_tree.bind("<<TreeviewSelect>>", select_topic)
         refresh_topics()
@@ -1418,7 +1402,7 @@ class QuizApplication(tk.Tk):
             except Exception as exc:
                 self.report_error(exc)
 
-        ttk.Button(form, text=self.icon_text("add", "Создать черновик и перейти к вопросам"), style="Primary.TButton", command=create_quiz).grid(
+        ttk.Button(form, text="Создать черновик и перейти к вопросам", style="Primary.TButton", command=create_quiz).grid(
             row=8, column=1, sticky="w", padx=(20, 0)
         )
 
@@ -1551,7 +1535,7 @@ class QuizApplication(tk.Tk):
             editor_state["question_id"] = None
             editor_title.configure(text="Новый вопрос")
             editor_note.configure(text="Заполните поля и добавьте вопрос в выбранный черновик.")
-            save_button.configure(text=self.icon_text("add", "Добавить вопрос"))
+            save_button.configure(text="Добавить вопрос")
             q_text.delete(0, "end")
             expected.delete(0, "end")
             explanation.delete(0, "end")
@@ -1605,7 +1589,7 @@ class QuizApplication(tk.Tk):
             editor_state["question_id"] = question_id
             editor_title.configure(text="Редактирование вопроса")
             editor_note.configure(text="Изменения применяются к выбранному вопросу черновика.")
-            save_button.configure(text=self.icon_text("save", "Сохранить изменения"))
+            save_button.configure(text="Сохранить изменения")
             set_combobox_value(q_category, list(q_category["values"]), question["category_id"])
             set_combobox_value(q_type, type_values, question["type_code"])
             set_combobox_value(q_diff, diff_values, question["difficulty_code"])
@@ -1695,10 +1679,10 @@ class QuizApplication(tk.Tk):
 
         form_actions = ttk.Frame(form, style="Panel.TFrame")
         form_actions.pack(fill="x", pady=(8, 0))
-        save_button = ttk.Button(form_actions, text=self.icon_text("add", "Добавить вопрос"), style="Primary.TButton", command=save_question)
+        save_button = ttk.Button(form_actions, text="Добавить вопрос", style="Primary.TButton", command=save_question)
         save_button.pack(side="left")
-        ttk.Button(form_actions, text=self.icon_text("clear", "Очистить форму"), style="Quiet.TButton", command=clear_fields).pack(side="left", padx=(8, 0))
-        ttk.Button(listing, text=self.icon_text("delete", "Удалить выбранный вопрос"), style="Danger.TButton", command=delete_question).pack(anchor="e", pady=(10, 0))
+        ttk.Button(form_actions, text="Очистить форму", style="Quiet.TButton", command=clear_fields).pack(side="left", padx=(8, 0))
+        ttk.Button(listing, text="Удалить выбранный вопрос", style="Danger.TButton", command=delete_question).pack(anchor="e", pady=(10, 0))
         q_quiz.bind("<<ComboboxSelected>>", refresh_question_context)
         q_type.bind("<<ComboboxSelected>>", update_answer_fields)
         question_tree.bind("<<TreeviewSelect>>", load_question)
@@ -1835,7 +1819,7 @@ class QuizApplication(tk.Tk):
 
         save_feedback = ttk.Button(
             settings,
-            text=self.icon_text("save", "Сохранить настройку для черновика"),
+            text="Сохранить настройку для черновика",
             style="Quiet.TButton",
             command=apply_feedback_setting,
         )
@@ -1847,7 +1831,7 @@ class QuizApplication(tk.Tk):
 
         save_attempt_limit = ttk.Button(
             settings,
-            text=self.icon_text("save", "Сохранить лимит попыток"),
+            text="Сохранить лимит попыток",
             style="Quiet.TButton",
             command=apply_attempt_limit_setting,
         )
@@ -1867,7 +1851,7 @@ class QuizApplication(tk.Tk):
             except Exception as exc:
                 self.report_error(exc)
 
-        ttk.Button(state_actions, text=self.icon_text("publish", "Опубликовать выбранный тест"), style="Primary.TButton", command=publish).pack(side="left")
+        ttk.Button(state_actions, text="Опубликовать выбранный тест", style="Primary.TButton", command=publish).pack(side="left")
         restricted = [row for row in quizzes if row["access_mode"] == "RESTRICTED"]
         users = self.gateway.users()
         access_row = ttk.Frame(settings, style="Panel.TFrame")
@@ -1895,7 +1879,7 @@ class QuizApplication(tk.Tk):
             except Exception as exc:
                 self.report_error(exc)
 
-        ttk.Button(access_row, text=self.icon_text("grant", "Выдать доступ"), style="Quiet.TButton", command=grant_access).pack(side="left", padx=(7, 0))
+        ttk.Button(access_row, text="Выдать доступ", style="Quiet.TButton", command=grant_access).pack(side="left", padx=(7, 0))
 
         def delete_quiz():
             if not tree.selection():
@@ -1930,8 +1914,8 @@ class QuizApplication(tk.Tk):
                 self.report_error(exc)
 
         if self.user.role_code in ("ADMIN", "AUTHOR"):
-            ttk.Button(state_actions, text=self.icon_text("hide", "Скрыть в черновик"), style="Quiet.TButton", command=archive_quiz).pack(side="left", padx=(9, 0))
-            ttk.Button(state_actions, text=self.icon_text("delete", "Удалить тест"), style="Danger.TButton", command=delete_quiz).pack(side="left", padx=(9, 0))
+            ttk.Button(state_actions, text="Скрыть в черновик", style="Quiet.TButton", command=archive_quiz).pack(side="left", padx=(9, 0))
+            ttk.Button(state_actions, text="Удалить тест", style="Danger.TButton", command=delete_quiz).pack(side="left", padx=(9, 0))
         tree.bind("<<TreeviewSelect>>", refresh_feedback_controls)
         refresh_feedback_controls()
 
@@ -2059,8 +2043,8 @@ class QuizApplication(tk.Tk):
 
         buttons = ttk.Frame(quizzes_panel, style="Panel.TFrame")
         buttons.pack(fill="x", pady=(12, 0))
-        ttk.Button(buttons, text=self.icon_text("reset", "Сбросить выбранный тест"), style="Danger.TButton", command=reset_quiz_attempts).pack(side="left")
-        ttk.Button(buttons, text=self.icon_text("reset", "Обнулить весь прогресс"), style="Danger.TButton", command=reset_all_attempts).pack(side="right")
+        ttk.Button(buttons, text="Сбросить выбранный тест", style="Danger.TButton", command=reset_quiz_attempts).pack(side="left")
+        ttk.Button(buttons, text="Обнулить весь прогресс", style="Danger.TButton", command=reset_all_attempts).pack(side="right")
         users_tree.bind("<<TreeviewSelect>>", show_attempts)
         if users_tree.get_children():
             users_tree.selection_set(users_tree.get_children()[0])
@@ -2106,7 +2090,7 @@ class QuizApplication(tk.Tk):
             except Exception as exc:
                 self.report_error(exc)
 
-        ttk.Button(creator, text=self.icon_text("author", "Создать автора"), style="Primary.TButton", command=create_author).grid(
+        ttk.Button(creator, text="Создать автора", style="Primary.TButton", command=create_author).grid(
             row=3, column=3, sticky="e", padx=(16, 0), pady=(4, 0)
         )
 
@@ -2215,28 +2199,28 @@ class QuizApplication(tk.Tk):
         actions.pack(fill="x", pady=(12, 0))
         role_actions = ttk.Frame(actions, style="App.TFrame")
         role_actions.pack(side="left")
-        ttk.Button(role_actions, text=self.icon_text("author", "Назначить автором"), style="Primary.TButton", command=lambda: apply_role("AUTHOR")).pack(side="left")
-        ttk.Button(role_actions, text=self.icon_text("user", "Сделать участником"), style="Quiet.TButton", command=lambda: apply_role("USER")).pack(side="left", padx=(10, 0))
+        ttk.Button(role_actions, text="Назначить автором", style="Primary.TButton", command=lambda: apply_role("AUTHOR")).pack(side="left")
+        ttk.Button(role_actions, text="Сделать участником", style="Quiet.TButton", command=lambda: apply_role("USER")).pack(side="left", padx=(10, 0))
 
         security_actions = ttk.Frame(actions, style="App.TFrame")
         security_actions.pack(side="right")
         ttk.Label(security_actions, text="Новый пароль", style="Muted.TLabel").pack(side="left", padx=(0, 8))
         password_entry = ttk.Entry(security_actions, width=20, show="*")
         password_entry.pack(side="left")
-        ttk.Button(security_actions, text=self.icon_text("save", "Сменить пароль"), style="Quiet.TButton", command=change_password).pack(side="left", padx=(8, 0))
+        ttk.Button(security_actions, text="Сменить пароль", style="Quiet.TButton", command=change_password).pack(side="left", padx=(8, 0))
         ttk.Button(
             security_actions,
-            text=self.icon_text("disable", "Отключить"),
+            text="Отключить",
             style="Quiet.TButton",
             command=lambda: set_user_active(0),
         ).pack(side="left", padx=(8, 0))
         ttk.Button(
             security_actions,
-            text=self.icon_text("enable", "Включить"),
+            text="Включить",
             style="Quiet.TButton",
             command=lambda: set_user_active(1),
         ).pack(side="left", padx=(8, 0))
-        ttk.Button(security_actions, text=self.icon_text("delete", "Удалить пользователя"), style="Danger.TButton", command=delete_user).pack(side="left", padx=(8, 0))
+        ttk.Button(security_actions, text="Удалить пользователя", style="Danger.TButton", command=delete_user).pack(side="left", padx=(8, 0))
 
     def destroy(self):
         self.abandon_active_attempt()

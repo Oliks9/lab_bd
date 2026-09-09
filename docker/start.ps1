@@ -8,7 +8,7 @@ try {
     docker compose up -d
     docker compose ps
     Write-Host "Oracle is starting. Wait for status 'healthy', then run docker\check.ps1."
-    Write-Host "DSN: localhost:1521/FREEPDB1 | schema: quiz_app | password: QuizSchema2026"
+    Write-Host "DSN: localhost:1521/FREEPDB1 | schema: quiz_app | password: P@ssw0rd"
 }
 finally {
     Pop-Location

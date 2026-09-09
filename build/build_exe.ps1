@@ -11,6 +11,9 @@ $SpecPath = Join-Path $ProjectRoot "build"
 $TclRuntime = Join-Path $ProjectRoot "build\tcl_runtime"
 
 & $Python -m pip install -r (Join-Path $ProjectRoot "requirements.txt")
+if ($LASTEXITCODE -ne 0) {
+    throw "Dependency installation failed (exit code $LASTEXITCODE)."
+}
 
 # The Codex bundled Python in this workspace ships mismatched Tcl scripts.
 # Use extracted compatible Tk resources when present; a normal Python install ignores this branch.
@@ -34,6 +37,9 @@ try {
         --collect-all oracledb `
         --collect-all cryptography `
         $EntryPoint
+    if ($LASTEXITCODE -ne 0) {
+        throw "EXE build failed (exit code $LASTEXITCODE)."
+    }
 }
 finally {
     Pop-Location

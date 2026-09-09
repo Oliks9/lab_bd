@@ -7,6 +7,9 @@ Push-Location $ProjectRoot
 try {
     docker compose ps
     docker compose exec -T oracle sqlplus -s /nolog "@/opt/quiz-project/docker/run_db_checks.sql"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Oracle checks failed (exit code $LASTEXITCODE)."
+    }
 }
 finally {
     Pop-Location

@@ -12,7 +12,10 @@ BEGIN
       FROM app_users
      WHERE login = LOWER(TRIM(p_login))
        AND password_hash = fn_hash_password(p_login, p_password)
-       AND is_active = 1;
+       AND is_active = 1
+       FOR UPDATE;
+
+    pkg_testing.abandon_user_attempts(p_user_id);
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
         RAISE_APPLICATION_ERROR(-20014, 'Неверный логин, пароль или учетная запись отключена.');

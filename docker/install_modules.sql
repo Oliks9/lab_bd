@@ -16,7 +16,6 @@ PROMPT === Creating standalone functions ===
 
 PROMPT === Creating account procedures ===
 @/opt/quiz-project/sql/03_procedures/pr_register_user.sql
-@/opt/quiz-project/sql/03_procedures/pr_login.sql
 
 PROMPT === Creating validation and audit triggers ===
 @/opt/quiz-project/sql/04_triggers/trg_app_users_biu.sql
@@ -25,10 +24,11 @@ PROMPT === Creating validation and audit triggers ===
 @/opt/quiz-project/sql/04_triggers/trg_audit.sql
 
 PROMPT === Creating business packages ===
-@/opt/quiz-project/sql/05_packages/pkg_admin.pks
-@/opt/quiz-project/sql/05_packages/pkg_admin.pkb
 @/opt/quiz-project/sql/05_packages/pkg_testing.pks
 @/opt/quiz-project/sql/05_packages/pkg_testing.pkb
+@/opt/quiz-project/sql/03_procedures/pr_login.sql
+@/opt/quiz-project/sql/05_packages/pkg_admin.pks
+@/opt/quiz-project/sql/05_packages/pkg_admin.pkb
 
 PROMPT === Creating report views ===
 @/opt/quiz-project/sql/06_views/01_views.sql

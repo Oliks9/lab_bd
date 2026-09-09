@@ -44,8 +44,6 @@ class OracleGateway:
             role = cursor.var(str, size=20)
             cursor.callproc("pr_login", [login, password, user_id, full_name, role])
             resolved_user_id = int(user_id.getvalue())
-            # On each new session, expire unfinished attempts left from interrupted app runs.
-            cursor.callproc("pkg_testing.abandon_user_attempts", [resolved_user_id])
         self.connection.commit()
         return SessionUser(resolved_user_id, full_name.getvalue(), role.getvalue())
 
@@ -105,35 +103,34 @@ class OracleGateway:
     def attempt_header(self, attempt_id: int):
         return self._rows(
             """
-            SELECT a.attempt_id, a.deadline_at, q.title AS quiz_title, q.show_feedback,
+            WITH clocks AS (
+                SELECT a.*,
+                       a.deadline_at - SYSTIMESTAMP AS quiz_left,
+                       a.question_started_at + NUMTODSINTERVAL(a.question_duration_minutes, 'MINUTE')
+                           - SYSTIMESTAMP AS question_left
+                  FROM attempts a WHERE a.attempt_id = :id
+            )
+            SELECT a.attempt_id, a.status, a.deadline_at, q.title AS quiz_title, q.show_feedback,
                    a.timer_mode, a.question_duration_minutes, a.active_question_order,
-                   NVL(
-                       GREATEST(
-                           0,
-                           ROUND(
-                               (CAST(SYS_EXTRACT_UTC(a.deadline_at) AS DATE)
-                               - CAST(SYS_EXTRACT_UTC(SYSTIMESTAMP) AS DATE)) * 86400
-                           )
-                       ),
-                       0
-                   ) AS remaining_seconds,
+                   NVL(GREATEST(0, CEIL(
+                       EXTRACT(DAY FROM a.quiz_left) * 86400
+                       + EXTRACT(HOUR FROM a.quiz_left) * 3600
+                       + EXTRACT(MINUTE FROM a.quiz_left) * 60
+                       + EXTRACT(SECOND FROM a.quiz_left)
+                   )), 0) AS remaining_seconds,
                    CASE
                        WHEN a.timer_mode = 'QUESTION'
                             AND a.question_started_at IS NOT NULL
                             AND a.question_duration_minutes IS NOT NULL THEN
-                           GREATEST(
-                               0,
-                               ROUND(
-                                   (
-                                       CAST(SYS_EXTRACT_UTC(a.question_started_at + NUMTODSINTERVAL(a.question_duration_minutes, 'MINUTE')) AS DATE)
-                                       - CAST(SYS_EXTRACT_UTC(SYSTIMESTAMP) AS DATE)
-                                   ) * 86400
-                               )
-                           )
+                           GREATEST(0, CEIL(
+                               EXTRACT(DAY FROM a.question_left) * 86400
+                               + EXTRACT(HOUR FROM a.question_left) * 3600
+                               + EXTRACT(MINUTE FROM a.question_left) * 60
+                               + EXTRACT(SECOND FROM a.question_left)
+                           ))
                        ELSE NULL
                    END AS question_remaining_seconds
-              FROM attempts a JOIN quizzes q ON q.quiz_id = a.quiz_id
-             WHERE a.attempt_id = :id
+              FROM clocks a JOIN quizzes q ON q.quiz_id = a.quiz_id
             """,
             {"id": attempt_id},
         )[0]
@@ -213,10 +210,14 @@ class OracleGateway:
             SELECT q.quiz_id, q.topic_id, t.title AS topic_title, q.title, q.status, q.access_mode,
                    q.timer_mode, q.duration_minutes, q.show_feedback, q.attempt_limit
               FROM quizzes q JOIN topics t ON t.topic_id = q.topic_id
-             WHERE :role = 'ADMIN' OR q.author_id = :actor_id
+             WHERE EXISTS (
+                 SELECT 1 FROM app_users u WHERE u.user_id = :actor_id
+                   AND u.is_active = 1 AND u.role_code IN ('ADMIN', 'AUTHOR')
+                   AND (u.role_code = 'ADMIN' OR q.author_id = u.user_id)
+             )
              ORDER BY q.created_at DESC
             """,
-            {"role": actor.role_code, "actor_id": actor.user_id},
+            {"actor_id": actor.user_id},
         )
 
     def admin_questions(self, quiz_id: int):
@@ -443,11 +444,15 @@ class OracleGateway:
               LEFT JOIN v_attempt_history h
                 ON h.quiz_id = c.quiz_id
                AND h.status IN ('FINISHED', 'EXPIRED')
-             WHERE :role = 'ADMIN' OR q.author_id = :actor_id
+             WHERE EXISTS (
+                 SELECT 1 FROM app_users u WHERE u.user_id = :actor_id
+                   AND u.is_active = 1 AND u.role_code IN ('ADMIN', 'AUTHOR')
+                   AND (u.role_code = 'ADMIN' OR q.author_id = u.user_id)
+             )
              GROUP BY c.topic_title, c.quiz_title, c.quiz_id
              ORDER BY c.topic_title, c.quiz_title
             """,
-            {"role": actor.role_code, "actor_id": actor.user_id},
+            {"actor_id": actor.user_id},
         )
 
     def question_statistics(self, quiz_id: int):
