@@ -16,6 +16,11 @@ STATUS_NAMES = {
     "PUBLISHED": "Опубликован",
     "ARCHIVED": "В архиве",
 }
+ATTEMPT_STATUS_NAMES = {
+    "IN_PROGRESS": "В процессе",
+    "FINISHED": "Завершена",
+    "EXPIRED": "Прервана",
+}
 ACCESS_NAMES = {
     "PUBLIC": "Публичный",
     "RESTRICTED": "По приглашению",
@@ -1060,12 +1065,13 @@ class QuizApplication(tk.Tk):
         summary_outer, summary = self.panel(self.page, padding=18)
         summary_outer.pack(fill="x", pady=(0, 14))
         result_tone = "success" if result["status"] == "FINISHED" else "warning" if result["status"] == "EXPIRED" else "default"
+        result_status = ATTEMPT_STATUS_NAMES.get(result["status"], "Неизвестный статус")
         feedback_name = "Пояснения включены" if int(header["show_feedback"]) == 1 else "Пояснения скрыты"
         timer_mode_name = TIMER_MODE_NAMES.get(header.get("timer_mode") or "QUIZ", "На весь тест")
         self.add_chip_row(
             summary,
             [
-                (result["status"], result_tone),
+                (result_status, result_tone),
                 (feedback_name, "brand"),
                 (timer_mode_name, "default"),
             ],
@@ -1074,7 +1080,7 @@ class QuizApplication(tk.Tk):
             ("Итог", f"{result['score_percent'] or 0}%"),
             ("Баллы", f"{result['awarded_points'] or 0} / {result['max_points'] or 0}"),
             ("Верно", f"{result['correct_count']} / {result['question_count']}"),
-            ("Статус", result["status"]),
+            ("Статус", result_status),
         ]
         stats_grid = ttk.Frame(summary, style="Panel.TFrame")
         stats_grid.pack(fill="x", pady=(SPACING["sm"], 0))
@@ -1130,7 +1136,7 @@ class QuizApplication(tk.Tk):
         for result in self.gateway.history(self.user.user_id):
             tree.insert(
                 "", "end", iid=str(result["attempt_id"]),
-                values=(result["topic_title"], result["quiz_title"], result["started_at"], result["status"], result["score_percent"] or "-", f"{result['correct_count']}/{result['question_count']}"),
+                values=(result["topic_title"], result["quiz_title"], result["started_at"], ATTEMPT_STATUS_NAMES.get(result["status"], "Неизвестный статус"), result["score_percent"] or "-", f"{result['correct_count']}/{result['question_count']}"),
             )
         ttk.Button(
             self.page, text="Открыть результат", style="Primary.TButton",
