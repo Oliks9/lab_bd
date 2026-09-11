@@ -123,3 +123,44 @@ SELECT
 FROM v_attempt_history
 WHERE status IN ('FINISHED', 'EXPIRED')
 GROUP BY user_id, full_name;
+
+CREATE OR REPLACE VIEW v_attempt_comparison AS
+WITH user_scores AS (
+    SELECT quiz_id, user_id, COUNT(*) AS attempt_count, SUM(score_percent) AS total_score
+      FROM attempts
+     WHERE status IN ('FINISHED', 'EXPIRED')
+       AND score_percent IS NOT NULL
+       AND max_points > 0
+     GROUP BY quiz_id, user_id
+), quiz_scores AS (
+    SELECT quiz_id, COUNT(*) AS user_count,
+           SUM(attempt_count) AS attempt_count, SUM(total_score) AS total_score
+      FROM user_scores
+     GROUP BY quiz_id
+), baselines AS (
+    SELECT a.attempt_id, a.user_id, a.quiz_id, a.status, a.score_percent, a.max_points,
+           NVL(q.attempt_count, 0) - NVL(u.attempt_count, 0) AS peer_attempt_count,
+           NVL(q.user_count, 0) - CASE WHEN u.user_id IS NOT NULL THEN 1 ELSE 0 END AS peer_user_count,
+           CASE WHEN a.status IN ('FINISHED', 'EXPIRED')
+                     AND a.score_percent IS NOT NULL AND a.max_points > 0 THEN
+               ROUND((q.total_score - NVL(u.total_score, 0))
+                   / NULLIF(q.attempt_count - NVL(u.attempt_count, 0), 0), 2)
+           END AS peer_average_percent
+      FROM attempts a
+      LEFT JOIN quiz_scores q ON q.quiz_id = a.quiz_id
+      LEFT JOIN user_scores u ON u.quiz_id = a.quiz_id AND u.user_id = a.user_id
+), differences AS (
+    SELECT b.*, ROUND(score_percent - peer_average_percent, 2) AS difference_pp
+      FROM baselines b
+)
+SELECT attempt_id, user_id, quiz_id, peer_attempt_count, peer_user_count,
+       peer_average_percent, difference_pp,
+       CASE
+           WHEN status = 'IN_PROGRESS' THEN 'IN_PROGRESS'
+           WHEN score_percent IS NULL OR max_points IS NULL OR max_points <= 0 THEN 'NO_SCORE'
+           WHEN peer_attempt_count = 0 THEN 'NO_PEERS'
+           WHEN difference_pp > 0 THEN 'ABOVE'
+           WHEN difference_pp < 0 THEN 'BELOW'
+           ELSE 'EQUAL'
+       END AS comparison_code
+  FROM differences;

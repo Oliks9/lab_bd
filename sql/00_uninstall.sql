@@ -12,6 +12,7 @@ DECLARE
             END IF;
     END;
 BEGIN
+    drop_if_exists('DROP VIEW v_attempt_comparison');
     drop_if_exists('DROP VIEW v_leaderboard');
     drop_if_exists('DROP VIEW v_question_statistics');
     drop_if_exists('DROP VIEW v_attempt_details');

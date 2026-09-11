@@ -161,7 +161,16 @@ class OracleGateway:
         self.connection.commit()
 
     def attempt_result(self, attempt_id: int):
-        return self._rows("SELECT * FROM v_attempt_history WHERE attempt_id = :id", {"id": attempt_id})[0]
+        return self._rows(
+            """
+            SELECT h.*, c.peer_average_percent, c.difference_pp,
+                   c.peer_attempt_count, c.peer_user_count, c.comparison_code
+              FROM v_attempt_history h
+              JOIN v_attempt_comparison c ON c.attempt_id = h.attempt_id
+             WHERE h.attempt_id = :id
+            """,
+            {"id": attempt_id},
+        )[0]
 
     def attempt_details(self, attempt_id: int):
         return self._rows(

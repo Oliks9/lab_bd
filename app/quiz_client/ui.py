@@ -1091,6 +1091,8 @@ class QuizApplication(tk.Tk):
             ttk.Label(frame, text=str(value), style="CardTitle.TLabel").pack(anchor="w", pady=(5, 0))
             stats_grid.columnconfigure(index, weight=1)
 
+        self.render_attempt_comparison(summary, result)
+
         outer, body = self.panel(self.page, padding=15)
         outer.pack(fill="both", expand=True)
         show_feedback = int(header["show_feedback"]) == 1
@@ -1118,6 +1120,58 @@ class QuizApplication(tk.Tk):
                 "end",
                 values=(row["display_order"], status, row["question_text"], row["given_answer"] or "-", correct, explanation),
             )
+
+    def render_attempt_comparison(self, parent, result):
+        box = tk.Frame(parent, bg=COLORS["blue_soft"], padx=14, pady=12)
+        box.pack(fill="x", pady=(SPACING["md"], 0))
+        tk.Label(
+            box, text="Сравнение с другими участниками", bg=COLORS["blue_soft"],
+            fg=COLORS["ink"], font=("Segoe UI", 11, "bold"),
+        ).pack(anchor="w")
+
+        code = result["comparison_code"]
+        unavailable = {
+            "IN_PROGRESS": "Сравнение появится после завершения попытки.",
+            "NO_SCORE": "Сравнение недоступно: у этой попытки нет итоговой оценки или баллов за вопросы.",
+            "NO_PEERS": "Пока нет результатов других участников по этому тесту. Ваш результат сохранён.",
+        }
+        if code in unavailable:
+            tk.Label(
+                box, text=unavailable[code], bg=COLORS["blue_soft"], fg=COLORS["muted"],
+                font=("Segoe UI", 10), wraplength=800, justify="left",
+            ).pack(anchor="w", pady=(6, 0))
+            return
+
+        def percent(value):
+            return f"{value:.2f}".replace(".", ",")
+
+        comparison = {
+            "ABOVE": "Выше среднего",
+            "BELOW": "Ниже среднего",
+            "EQUAL": "На уровне среднего",
+        }[code]
+        difference = result["difference_pp"]
+        difference_text = f"{difference:+.2f}".replace(".", ",") if difference else "0,00"
+        metrics = tk.Frame(box, bg=COLORS["blue_soft"])
+        metrics.pack(fill="x", pady=(8, 0))
+        for column, (title, value) in enumerate((
+            ("Ваш результат", f"{percent(result['score_percent'])}%"),
+            ("Средний результат", f"{percent(result['peer_average_percent'])}%"),
+            (comparison, f"{difference_text} п. п."),
+        )):
+            cell = tk.Frame(metrics, bg=COLORS["blue_soft"])
+            cell.grid(row=0, column=column, sticky="ew", padx=(0, 12))
+            metrics.columnconfigure(column, weight=1, uniform="comparison")
+            tk.Label(cell, text=title, bg=COLORS["blue_soft"], fg=COLORS["muted"], font=("Segoe UI", 10)).pack(anchor="w")
+            tk.Label(cell, text=value, bg=COLORS["blue_soft"], fg=COLORS["ink"], font=("Segoe UI", 13, "bold")).pack(anchor="w")
+        tk.Label(
+            box,
+            text=(f"Участников: {result['peer_user_count']}. Попыток: {result['peer_attempt_count']}. "
+                  "Учтены завершённые и прерванные попытки этого теста; ваши попытки исключены. "
+                  "П. п. — процентные пункты."),
+            bg=COLORS["blue_soft"], fg=COLORS["muted"], font=("Segoe UI", 9),
+            wraplength=800, justify="left",
+        ).pack(anchor="w", pady=(8, 0))
 
     def show_history(self):
         self.clear_page()
