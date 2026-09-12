@@ -1,8 +1,12 @@
 SET SERVEROUTPUT ON
 DECLARE
     v_admin_id NUMBER;
-    v_name VARCHAR2(200);
-    v_role VARCHAR2(20);
+    v_user_id NUMBER;
+    v_topic_id NUMBER;
+    v_category_id NUMBER;
+    v_option_id NUMBER;
+    v_types SYS.ODCIVARCHAR2LIST := SYS.ODCIVARCHAR2LIST(
+        'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TEXT', 'NUMBER', 'BOOLEAN', 'ORDERING');
     v_login VARCHAR2(50);
     v_quiz_id NUMBER;
     v_attempt_id NUMBER;
@@ -11,15 +15,28 @@ DECLARE
     v_score NUMBER;
 BEGIN
     SAVEPOINT before_testing_smoke_test;
-    v_login := 'smoke_player_' || TO_CHAR(TRUNC(DBMS_RANDOM.VALUE(1000, 9999)));
-    pr_register_user(v_login, 'Smoke123!', 'Smoke Player', v_admin_id);
-    SELECT quiz_id
-      INTO v_quiz_id
-      FROM quizzes
-     WHERE status = 'PUBLISHED'
-       AND access_mode = 'PUBLIC'
-       AND ROWNUM = 1;
-    pkg_testing.start_attempt(v_admin_id, v_quiz_id, v_attempt_id);
+    v_login := 'smoke_player_' || LOWER(RAWTOHEX(SYS_GUID()));
+    pr_register_user(v_login, 'Smoke123!', 'Smoke Player', v_user_id);
+    SELECT user_id INTO v_admin_id FROM app_users WHERE role_code = 'ADMIN' AND is_active = 1 AND ROWNUM = 1;
+    pkg_admin.create_topic(v_admin_id, v_login, NULL, v_topic_id);
+    pkg_admin.create_category(v_admin_id, v_topic_id, 'Six types', v_category_id);
+    pkg_admin.create_quiz(v_admin_id, v_topic_id, 'Six types test', NULL, 'QUIZ', 10, NULL, 1, 'PUBLIC', v_quiz_id);
+    FOR i IN 1..v_types.COUNT LOOP
+        pkg_admin.add_question(v_admin_id, v_quiz_id, v_category_id, v_types(i), 'EASY',
+            'Question ' || i, CASE v_types(i) WHEN 'TEXT' THEN 'COMMIT' WHEN 'NUMBER' THEN '2' END,
+            NULL, 1, v_question_id);
+        IF v_types(i) IN ('SINGLE_CHOICE', 'BOOLEAN') THEN
+            pkg_admin.add_option(v_admin_id, v_question_id, 'Correct', 1, v_option_id);
+            pkg_admin.add_option(v_admin_id, v_question_id, 'Wrong', 0, v_option_id);
+        ELSIF v_types(i) IN ('MULTIPLE_CHOICE', 'ORDERING') THEN
+            FOR j IN 1..3 LOOP
+                pkg_admin.add_option(v_admin_id, v_question_id, 'Option ' || j,
+                    CASE WHEN v_types(i) = 'ORDERING' OR j < 3 THEN 1 ELSE 0 END, v_option_id);
+            END LOOP;
+        END IF;
+    END LOOP;
+    pkg_admin.publish_quiz(v_admin_id, v_quiz_id);
+    pkg_testing.start_attempt(v_user_id, v_quiz_id, v_attempt_id);
 
     SELECT q.question_id, TO_CHAR(qo.option_id)
       INTO v_question_id, v_option_ids
@@ -75,5 +92,8 @@ BEGIN
 
     DBMS_OUTPUT.PUT_LINE('Testing smoke test successful. Six answer types scored: ' || v_score || '%');
     ROLLBACK TO before_testing_smoke_test;
+EXCEPTION WHEN OTHERS THEN
+    ROLLBACK TO before_testing_smoke_test;
+    RAISE;
 END;
 /

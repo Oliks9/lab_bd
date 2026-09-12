@@ -205,9 +205,10 @@ class QuizApplication(tk.Tk):
                 ttk.Button(nav, text="Студия тестов", style="Nav.TButton", command=self.show_admin).pack(side="left", padx=3)
             ttk.Button(nav, text="Выйти", style="Quiet.TButton", command=self.logout).pack(side="left", padx=(12, 0))
 
-    def add_chip_row(self, parent, chips):
+    def add_chip_row(self, parent, chips, wrap=False):
         row = tk.Frame(parent, bg=COLORS["panel"])
-        row.pack(anchor="w", pady=(SPACING["xs"], 0))
+        row.pack(anchor="w", fill="x" if wrap else "none", pady=(SPACING["xs"], 0))
+        labels = []
         for text, tone in chips:
             tone_colors = {
                 "default": (COLORS["chip_bg"], COLORS["chip_border"], COLORS["chip_text"]),
@@ -227,7 +228,25 @@ class QuizApplication(tk.Tk):
                 highlightthickness=1,
                 highlightbackground=border,
             )
-            chip.pack(side="left", padx=(0, 8))
+            labels.append(chip)
+            if not wrap:
+                chip.pack(side="left", padx=(0, 8))
+        if wrap:
+            def arrange(_event=None):
+                width = row.winfo_width()
+                x = y = line_height = 0
+                for chip in labels:
+                    chip_width = chip.winfo_reqwidth()
+                    chip_height = chip.winfo_reqheight()
+                    if x and x + chip_width > width:
+                        x = 0
+                        y += line_height + 6
+                        line_height = 0
+                    chip.place(x=x, y=y)
+                    x += chip_width + 8
+                    line_height = max(line_height, chip_height)
+                row.configure(height=y + line_height)
+            row.bind("<Configure>", arrange)
 
     def report_error(self, exc):
         message = str(exc)
@@ -394,7 +413,9 @@ class QuizApplication(tk.Tk):
             "Доступные тесты",
             f"{self.user.full_name}  |  {role_name}. Выберите тест и начните попытку.",
         )
-        controls_outer, controls = self.panel(self.page, padding=SPACING["sm"])
+        body = ttk.Frame(self.page, style="App.TFrame")
+        body.pack(fill="both", expand=True)
+        controls_outer, controls = self.panel(body, padding=SPACING["sm"])
         controls_outer.pack(fill="x", pady=(0, SPACING["sm"]))
         ttk.Label(controls, text="Фильтр по тематике", style="Card.TLabel").pack(side="left", padx=(0, 12))
         topics = self.gateway.topics()
@@ -404,10 +425,9 @@ class QuizApplication(tk.Tk):
         selected_topic.set(labels[0])
         selected_topic.pack(side="left")
 
-        outer, content = self.panel(self.page, padding=SPACING["md"])
-        outer.pack(fill="both", expand=True)
+        outer, content = self.panel(body, padding=SPACING["md"])
         columns = ("topic", "quiz", "questions", "duration", "points", "author")
-        tree = ttk.Treeview(content, columns=columns, show="headings", selectmode="browse")
+        tree = ttk.Treeview(content, columns=columns, show="headings", selectmode="browse", height=5)
         headers = {
             "topic": ("Тематика", 210),
             "quiz": ("Тест", 300),
@@ -419,25 +439,62 @@ class QuizApplication(tk.Tk):
         for name, (title, width) in headers.items():
             tree.heading(name, text=title)
             tree.column(name, width=width, anchor="w" if name in ("topic", "quiz", "author") else "center")
-        tree.pack(fill="both", expand=True)
+        table_scroll = ttk.Scrollbar(content, orient="vertical", command=tree.yview)
+        table_scroll.pack(side="right", fill="y")
+        tree.configure(yscrollcommand=table_scroll.set)
+        tree.pack(side="left", fill="both", expand=True)
         rows_by_id = {}
 
-        detail_outer, detail = self.panel(self.page, padding=SPACING["md"])
-        detail_outer.pack(fill="x", pady=(SPACING["sm"], 0))
-        selected_title = ttk.Label(detail, text="Выберите тест из списка", style="CardTitle.TLabel")
-        selected_title.pack(anchor="w")
-        selected_info = ttk.Label(detail, text="Здесь появятся описание, время и количество вопросов.", style="Muted.TLabel", wraplength=840, justify="left")
-        selected_info.pack(anchor="w", pady=(6, 0))
-        chips_anchor = tk.Frame(detail, bg=COLORS["panel"])
-        chips_anchor.pack(anchor="w", pady=(2, 0))
-
+        detail_outer, detail = self.panel(body, padding=SPACING["md"])
+        # Reserve the action before letting the table fill the remaining space.
+        detail_outer.pack(side="bottom", fill="x", pady=(SPACING["sm"], 0))
+        outer.pack(fill="both", expand=True)
         footer = ttk.Frame(detail, style="Panel.TFrame")
-        footer.pack(side="right", anchor="e")
+        footer.pack(side="right", fill="y", padx=(SPACING["md"], 0))
+        summary = ttk.Frame(detail, style="Panel.TFrame")
+        summary.pack(side="left", fill="both", expand=True)
+        viewport = tk.Canvas(summary, bg=COLORS["panel"], highlightthickness=0, width=1)
+        summary_scroll = ttk.Scrollbar(summary, orient="vertical", command=viewport.yview)
+        summary_scroll.pack(side="right", fill="y")
+        viewport.configure(yscrollcommand=summary_scroll.set)
+        viewport.pack(side="left", fill="both", expand=True)
+        summary_content = ttk.Frame(viewport, style="Panel.TFrame")
+        summary_window = viewport.create_window(0, 0, anchor="nw", window=summary_content)
+        selected_title = ttk.Label(summary_content, text="Выберите тест из списка", style="CardTitle.TLabel", justify="left")
+        selected_title.pack(anchor="w")
+        selected_info = ttk.Label(summary_content, text="Здесь появятся описание, время и количество вопросов.", style="Muted.TLabel", justify="left")
+        selected_info.pack(anchor="w", pady=(6, 0))
+        chips_anchor = tk.Frame(summary_content, bg=COLORS["panel"])
+        chips_anchor.pack(fill="x", pady=(2, 0))
+        line_height = int(self.tk.call("font", "metrics", ttk.Style(self).lookup("Muted.TLabel", "font"), "-linespace"))
+        viewport.configure(height=line_height * 7)
+
+        def resize_summary(event):
+            viewport.itemconfigure(summary_window, width=event.width)
+            selected_title.configure(wraplength=max(1, event.width - 4))
+            selected_info.configure(wraplength=max(1, event.width - 4))
+
+        def scroll_summary(event):
+            if viewport.yview() != (0.0, 1.0):
+                step = -1 if event.delta > 0 or event.num == 4 else 1
+                viewport.yview_scroll(step * 3, "units")
+            return "break"
+
+        def bind_summary_scroll(widget):
+            for event in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                widget.bind(event, scroll_summary)
+            for child in widget.winfo_children():
+                bind_summary_scroll(child)
+
+        viewport.bind("<Configure>", resize_summary)
+        summary_content.bind("<Configure>", lambda _event: viewport.configure(scrollregion=viewport.bbox("all")))
+        bind_summary_scroll(viewport)
 
         def load_catalog(_event=None):
             for item in tree.get_children():
                 tree.delete(item)
             rows_by_id.clear()
+            start_button.state(["disabled"])
             topic_id = topic_by_label.get(selected_topic.get())
             try:
                 rows = self.gateway.catalog(self.user.user_id, topic_id)
@@ -458,6 +515,7 @@ class QuizApplication(tk.Tk):
                 selected_info.configure(text="Администратор или автор может опубликовать новый тест в студии.")
                 for child in chips_anchor.winfo_children():
                     child.destroy()
+                viewport.yview_moveto(0)
 
         selected_topic.bind("<<ComboboxSelected>>", load_catalog)
 
@@ -475,7 +533,9 @@ class QuizApplication(tk.Tk):
         def show_selected(_event=None):
             chosen = tree.selection()
             if not chosen or chosen[0] not in rows_by_id:
+                start_button.state(["disabled"])
                 return
+            start_button.state(["!disabled"])
             row = rows_by_id[chosen[0]]
             selected_title.configure(text=row["quiz_title"])
             description = row["description"] or "Описание не указано."
@@ -504,11 +564,25 @@ class QuizApplication(tk.Tk):
                     (TIMER_MODE_NAMES.get(timer_mode, timer_mode), "warning"),
                     (attempt_mode, "default"),
                 ],
+                wrap=True,
             )
+            bind_summary_scroll(summary_content)
+            viewport.yview_moveto(0)
 
         tree.bind("<<TreeviewSelect>>", show_selected)
         tree.bind("<Double-1>", lambda _event: start_selected())
-        ttk.Button(footer, text="Начать выбранный тест", style="Primary.TButton", command=start_selected).pack(side="right")
+        start_button = ttk.Button(footer, text="Начать выбранный тест", style="Primary.TButton", command=start_selected)
+        start_button.pack(side="bottom")
+
+        def fit_summary(_event=None):
+            # Keep two table rows available even at high DPI; only the summary scrolls.
+            row_height = int(ttk.Style(self).lookup("Treeview", "rowheight"))
+            table_height = outer.winfo_reqheight() - (int(tree.cget("height")) - 2) * row_height
+            detail_padding = detail_outer.winfo_reqheight() - viewport.winfo_reqheight()
+            available = body.winfo_height() - controls_outer.winfo_reqheight() - table_height - detail_padding - 2 * SPACING["sm"]
+            viewport.configure(height=max(start_button.winfo_reqheight(), min(line_height * 7, available)))
+
+        body.bind("<Configure>", fit_summary)
         self.set_enter_action(start_selected)
         load_catalog()
 

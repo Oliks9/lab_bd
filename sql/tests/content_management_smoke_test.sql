@@ -1,5 +1,6 @@
 SET SERVEROUTPUT ON
 DECLARE
+    v_suffix VARCHAR2(32) := LOWER(RAWTOHEX(SYS_GUID()));
     v_admin_id NUMBER;
     v_author_id NUMBER;
     v_topic_id NUMBER;
@@ -9,6 +10,7 @@ DECLARE
     v_question_id NUMBER;
     v_option_id NUMBER;
     v_attempt_id NUMBER;
+    v_failed_attempt_id NUMBER;
     v_name VARCHAR2(200);
     v_role VARCHAR2(20);
     v_count NUMBER;
@@ -16,7 +18,7 @@ BEGIN
     SAVEPOINT before_content_management_test;
 
     SELECT user_id INTO v_admin_id FROM app_users WHERE role_code = 'ADMIN' AND is_active = 1 AND ROWNUM = 1;
-    pkg_admin.create_author(v_admin_id, 'smoke_editor', 'Editor123!', 'Smoke Editor', v_author_id);
+    pkg_admin.create_author(v_admin_id, 'smoke_editor_' || v_suffix, 'Editor123!', 'Smoke Editor', v_author_id);
     pkg_admin.set_user_active(v_admin_id, v_author_id, 0);
     BEGIN
         pkg_admin.create_topic(v_author_id, 'Blocked topic', 'Should fail for inactive author', v_topic_id);
@@ -28,7 +30,7 @@ BEGIN
             END IF;
     END;
     pkg_admin.set_user_active(v_admin_id, v_author_id, 1);
-    pkg_admin.create_topic(v_author_id, 'Smoke content topic', 'Temporary author material', v_topic_id);
+    pkg_admin.create_topic(v_author_id, 'Smoke content ' || v_suffix, 'Temporary author material', v_topic_id);
     pkg_admin.create_category(v_author_id, v_topic_id, 'Author category', v_category_id);
 
     SELECT COUNT(*) INTO v_count
@@ -73,7 +75,7 @@ BEGIN
     pkg_testing.start_attempt(v_author_id, v_quiz_id, v_attempt_id);
     pkg_testing.finish_attempt(v_attempt_id);
     BEGIN
-        pkg_testing.start_attempt(v_author_id, v_quiz_id, v_attempt_id);
+        pkg_testing.start_attempt(v_author_id, v_quiz_id, v_failed_attempt_id);
         RAISE_APPLICATION_ERROR(-20986, 'Attempt limit did not block second try.');
     EXCEPTION
         WHEN OTHERS THEN
@@ -101,7 +103,11 @@ BEGIN
     pkg_admin.delete_category(v_admin_id, v_category_id);
     pkg_admin.delete_topic(v_admin_id, v_topic_id);
 
-    SELECT quiz_id INTO v_demo_quiz_id FROM quizzes WHERE status = 'PUBLISHED' AND ROWNUM = 1;
+    pkg_admin.create_topic(v_author_id, 'Smoke reset ' || v_suffix, NULL, v_topic_id);
+    pkg_admin.create_category(v_author_id, v_topic_id, 'Reset', v_category_id);
+    pkg_admin.create_quiz(v_author_id, v_topic_id, 'Reset test', NULL, 'QUIZ', 10, NULL, 1, 'PUBLIC', v_demo_quiz_id);
+    pkg_admin.add_question(v_author_id, v_demo_quiz_id, v_category_id, 'TEXT', 'EASY', 'Reset question', 'yes', NULL, 1, v_question_id);
+    pkg_admin.publish_quiz(v_author_id, v_demo_quiz_id);
     pkg_testing.start_attempt(v_author_id, v_demo_quiz_id, v_attempt_id);
     pkg_testing.abandon_user_attempts(v_author_id);
     SELECT COUNT(*) INTO v_count
@@ -126,6 +132,9 @@ BEGIN
 
     DBMS_OUTPUT.PUT_LINE('Content management smoke test successful. AUTHOR deletion and stats recalculation verified.');
     ROLLBACK TO before_content_management_test;
+EXCEPTION WHEN OTHERS THEN
+    ROLLBACK TO before_content_management_test;
+    RAISE;
 END;
 /
 
