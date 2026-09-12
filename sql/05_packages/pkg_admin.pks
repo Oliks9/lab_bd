@@ -76,6 +76,14 @@ CREATE OR REPLACE PACKAGE pkg_admin AS
         p_attempt_limit IN NUMBER
     );
 
+    PROCEDURE set_quiz_selection (
+        p_actor_id IN NUMBER,
+        p_quiz_id IN NUMBER,
+        p_question_limit IN NUMBER,
+        p_category_id IN NUMBER,
+        p_difficulty_code IN VARCHAR2
+    );
+
     PROCEDURE grant_access (
         p_actor_id IN NUMBER,
         p_quiz_id IN NUMBER,

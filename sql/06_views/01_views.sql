@@ -1,4 +1,8 @@
 CREATE OR REPLACE VIEW v_quiz_catalog AS
+WITH ranked_questions AS (
+    SELECT qu.*, ROW_NUMBER() OVER (PARTITION BY quiz_id ORDER BY seq_no) AS question_order
+      FROM questions qu
+)
 SELECT
     q.quiz_id,
     q.topic_id,
@@ -12,15 +16,26 @@ SELECT
     q.access_mode,
     q.status,
     u.full_name AS author_name,
-    COUNT(qu.question_id) AS question_count,
-    NVL(SUM(qu.points), 0) AS max_points
+    CASE WHEN q.selection_category_id IS NOT NULL THEN q.question_limit
+         ELSE COUNT(qu.question_id) END AS question_count,
+    CASE WHEN q.selection_category_id IS NULL THEN NVL(SUM(qu.points), 0) END AS max_points,
+    q.selection_category_id,
+    c.title AS selection_category_title,
+    d.difficulty_name AS selection_difficulty_name,
+    COUNT(qu.question_id) AS pool_count
 FROM quizzes q
 JOIN topics t ON t.topic_id = q.topic_id
 JOIN app_users u ON u.user_id = q.author_id
-LEFT JOIN questions qu ON qu.quiz_id = q.quiz_id
+LEFT JOIN categories c ON c.category_id = q.selection_category_id
+LEFT JOIN difficulty_levels d ON d.difficulty_code = q.selection_difficulty_code
+LEFT JOIN ranked_questions qu ON qu.quiz_id = q.quiz_id
+    AND (q.selection_category_id IS NULL OR qu.category_id = q.selection_category_id)
+    AND (q.selection_difficulty_code IS NULL OR qu.difficulty_code = q.selection_difficulty_code)
+    AND (q.selection_category_id IS NOT NULL OR q.question_limit IS NULL OR qu.question_order <= q.question_limit)
 GROUP BY
     q.quiz_id, q.topic_id, t.title, q.title, q.description, q.timer_mode, q.duration_minutes, q.attempt_limit,
-    q.show_feedback, q.access_mode, q.status, u.full_name;
+    q.show_feedback, q.access_mode, q.status, u.full_name,
+    q.selection_category_id, q.question_limit, c.title, d.difficulty_name;
 
 CREATE OR REPLACE VIEW v_attempt_history AS
 SELECT

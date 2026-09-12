@@ -447,7 +447,7 @@ class QuizApplication(tk.Tk):
             for row in rows:
                 tree.insert(
                     "", "end", iid=str(row["quiz_id"]),
-                    values=(row["topic_title"], row["quiz_title"], row["question_count"], row["duration_minutes"], row["max_points"], row["author_name"]),
+                    values=(row["topic_title"], row["quiz_title"], row["question_count"], row["duration_minutes"], row["max_points"] if row["max_points"] is not None else "По подбору", row["author_name"]),
                 )
                 rows_by_id[str(row["quiz_id"])] = row
             if rows:
@@ -486,8 +486,13 @@ class QuizApplication(tk.Tk):
                 if timer_mode == "QUIZ"
                 else f"{row['duration_minutes']} мин. на каждый вопрос"
             )
+            points_text = f"{row['max_points']} баллов" if row["max_points"] is not None else "Баллы зависят от выбранных вопросов"
+            selection_text = (
+                f"\nСлучайный подбор: {row['selection_category_title']}, {row['selection_difficulty_name']}."
+                if row.get("selection_category_id") is not None else ""
+            )
             selected_info.configure(
-                text=f"{description}\n{row['question_count']} вопросов  |  {timing}  |  {attempt_mode}  |  {row['max_points']} баллов  |  Автор: {row['author_name']}"
+                text=f"{description}\n{row['question_count']} вопросов  |  {timing}  |  {attempt_mode}  |  {points_text}  |  Автор: {row['author_name']}{selection_text}"
             )
             for child in chips_anchor.winfo_children():
                 child.destroy()
@@ -1206,6 +1211,7 @@ class QuizApplication(tk.Tk):
         self.build_admin_dictionaries(notebook)
         self.build_admin_quiz_editor(notebook)
         self.build_admin_question_editor(notebook)
+        self.build_admin_selection(notebook)
         self.build_admin_publication(notebook)
         self.build_admin_statistics(notebook)
         if self.user.role_code == "ADMIN":
@@ -1748,6 +1754,141 @@ class QuizApplication(tk.Tk):
         question_tree.bind("<<TreeviewSelect>>", load_question)
         update_answer_fields()
         refresh_question_context()
+
+    def build_admin_selection(self, notebook):
+        tab = ttk.Frame(notebook, style="App.TFrame", padding=16)
+        notebook.add(tab, text="Подбор")
+        outer, panel = self.panel(tab, padding=18)
+        outer.pack(fill="both", expand=True)
+        ttk.Label(panel, text="Подбор вопросов для попытки", style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(panel, text="Сначала добавьте вопросы во вкладке «Вопросы». Подбор использует только вопросы выбранного теста.",
+                  style="Muted.TLabel", wraplength=840).pack(anchor="w", pady=(4, 12))
+        ttk.Label(panel, text="Тест", style="Muted.TLabel").pack(anchor="w")
+        quiz_combo = ttk.Combobox(panel, state="readonly")
+        quiz_combo.pack(fill="x", pady=(4, 10))
+        mode = tk.StringVar(value="ALL")
+        modes = ttk.Frame(panel, style="Panel.TFrame")
+        modes.pack(fill="x")
+        all_radio = ttk.Radiobutton(modes, text="Все вопросы по порядку", variable=mode, value="ALL")
+        all_radio.pack(side="left", padx=(0, 24))
+        filtered_radio = ttk.Radiobutton(modes, text="Случайные N по категории и сложности", variable=mode, value="FILTERED")
+        filtered_radio.pack(side="left")
+        fields = ttk.Frame(panel, style="Panel.TFrame")
+        fields.pack(fill="x", pady=12)
+        fields.columnconfigure(0, weight=2)
+        fields.columnconfigure(1, weight=1)
+        ttk.Label(fields, text="Категория", style="Muted.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(fields, text="Сложность", style="Muted.TLabel").grid(row=0, column=1, sticky="w", padx=12)
+        ttk.Label(fields, text="Количество N", style="Muted.TLabel").grid(row=0, column=2, sticky="w")
+        category_combo = ttk.Combobox(fields, state="readonly")
+        category_combo.grid(row=1, column=0, sticky="ew", pady=(4, 0))
+        difficulty_combo = ttk.Combobox(fields, state="readonly", width=18)
+        difficulty_combo.grid(row=1, column=1, sticky="ew", padx=12, pady=(4, 0))
+        count = ttk.Entry(fields, width=12)
+        count.grid(row=1, column=2, sticky="ew", pady=(4, 0))
+        pool_label = ttk.Label(panel, text="", style="CardTitle.TLabel")
+        pool_label.pack(anchor="w", pady=(0, 6))
+        hint = ttk.Label(panel, text="", style="Muted.TLabel", wraplength=840, justify="left")
+        hint.pack(anchor="w", pady=(0, 12))
+        actions = ttk.Frame(panel, style="Panel.TFrame")
+        actions.pack(fill="x")
+        saved_label = ttk.Label(panel, text="", style="Muted.TLabel", wraplength=840)
+        saved_label.pack(anchor="w", pady=(10, 0))
+        rows_by_label = {}
+        categories_by_label = {}
+        _, difficulties = self.gateway.dictionaries()
+        difficulty_by_label = {row["difficulty_name"]: row["difficulty_code"] for row in difficulties}
+        difficulty_combo["values"] = list(difficulty_by_label)
+
+        def update_controls(_event=None):
+            row = rows_by_label.get(quiz_combo.get())
+            editable = bool(row and row["status"] == "DRAFT")
+            filtered = mode.get() == "FILTERED"
+            for widget in (all_radio, filtered_radio, save_button):
+                widget.configure(state="normal" if editable else "disabled")
+            category_combo.configure(state="readonly" if editable and filtered else "disabled")
+            difficulty_combo.configure(state="readonly" if editable and filtered else "disabled")
+            count.configure(state="normal" if editable and filtered else "disabled")
+            if not row:
+                pool_label.configure(text="Сначала создайте тест")
+                hint.configure(text="")
+                return
+            if filtered and (category_combo.get() not in categories_by_label or difficulty_combo.get() not in difficulty_by_label):
+                pool_label.configure(text="Выберите категорию и сложность")
+                hint.configure(text="Категория должна принадлежать тематике выбранного теста.")
+                return
+            try:
+                available = self.gateway.selection_pool_count(
+                    self.user.user_id, row["quiz_id"],
+                    categories_by_label.get(category_combo.get()) if filtered else None,
+                    difficulty_by_label.get(difficulty_combo.get()) if filtered else None,
+                )
+                pool_label.configure(text=f"Подходящих вопросов в тесте: {available}")
+                hint.configure(text=(
+                    "При каждой новой попытке Oracle выбирает ровно N вопросов без повторов. "
+                    "Если вопросов меньше N, публикация недоступна; черновик можно сохранить."
+                    if filtered else "Пользователь получит все вопросы теста в порядке автора."
+                ) + ("\nДля изменения настроек сначала скройте тест в черновик." if not editable else ""))
+            except Exception as exc:
+                self.report_error(exc)
+
+        def load_selected(_event=None):
+            row = rows_by_label.get(quiz_combo.get())
+            categories_by_label.clear()
+            if row:
+                categories_by_label.update({r["title"]: r["category_id"] for r in self.gateway.admin_categories(row["topic_id"])})
+            category_combo["values"] = list(categories_by_label)
+            category_combo.set(next((label for label, key in categories_by_label.items() if row and key == row["selection_category_id"]), next(iter(categories_by_label), "")))
+            difficulty_combo.set(next((label for label, key in difficulty_by_label.items() if row and key == row["selection_difficulty_code"]), next(iter(difficulty_by_label), "")))
+            mode.set("FILTERED" if row and row["selection_category_id"] is not None else "ALL")
+            count.configure(state="normal")
+            count.delete(0, "end")
+            count.insert(0, str(row["question_limit"] if row and row["question_limit"] else 1))
+            legacy = bool(row and row["question_limit"] and row["selection_category_id"] is None)
+            saved_label.configure(text="Сохранён старый лимит первых вопросов. Сохранение режима «Все» снимет этот лимит." if legacy else "Настройки загружены из базы. После изменения нажмите «Сохранить подбор».")
+            update_controls()
+
+        def refresh(_event=None):
+            if _event is not None and notebook.select() != str(tab):
+                return
+            current = quiz_combo.get()
+            rows_by_label.clear()
+            for row in self.gateway.admin_quizzes(self.user):
+                label = f"{row['quiz_id']} | {row['title']} ({STATUS_NAMES.get(row['status'], row['status'])})"
+                rows_by_label[label] = row
+            quiz_combo["values"] = list(rows_by_label)
+            quiz_combo.set(current if current in rows_by_label else next(iter(rows_by_label), ""))
+            load_selected()
+
+        def save():
+            row = rows_by_label.get(quiz_combo.get())
+            if not row:
+                return
+            try:
+                filtered = mode.get() == "FILTERED"
+                try:
+                    limit = int(count.get()) if filtered else None
+                except ValueError:
+                    raise ValueError("Количество вопросов должно быть целым числом от 1 до 1000.") from None
+                self.gateway.set_quiz_selection(self.user.user_id, row["quiz_id"], limit,
+                    categories_by_label.get(category_combo.get()) if filtered else None,
+                    difficulty_by_label.get(difficulty_combo.get()) if filtered else None)
+                refresh()
+                saved_label.configure(text="Подбор сохранён в Oracle. Теперь можно перейти к публикации теста.")
+                self.show_toast("Настройки подбора сохранены", kind="success")
+            except Exception as exc:
+                self.report_error(exc)
+
+        save_button = ttk.Button(actions, text="Сохранить подбор", style="Primary.TButton", command=save)
+        save_button.pack(side="left")
+        ttk.Button(actions, text="Обновить данные", style="Quiet.TButton", command=refresh).pack(side="left", padx=10)
+        all_radio.configure(command=update_controls)
+        filtered_radio.configure(command=update_controls)
+        quiz_combo.bind("<<ComboboxSelected>>", load_selected)
+        category_combo.bind("<<ComboboxSelected>>", update_controls)
+        difficulty_combo.bind("<<ComboboxSelected>>", update_controls)
+        notebook.bind("<<NotebookTabChanged>>", refresh, add="+")
+        refresh()
 
     def build_admin_publication(self, notebook):
         tab = ttk.Frame(notebook, style="App.TFrame", padding=16)

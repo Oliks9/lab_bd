@@ -35,15 +35,15 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
     BEGIN
         require_editor(p_actor_id);
         v_role := actor_role(p_actor_id);
-        SELECT COUNT(*)
+        SELECT quiz_id
           INTO v_count
           FROM quizzes
          WHERE quiz_id = p_quiz_id
            AND status = 'DRAFT'
-           AND (author_id = p_actor_id OR v_role = 'ADMIN');
-        IF v_count = 0 THEN
+           AND (author_id = p_actor_id OR v_role = 'ADMIN') FOR UPDATE;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
             RAISE_APPLICATION_ERROR(-20102, 'Изменять можно только доступный черновик теста.');
-        END IF;
     END;
 
     PROCEDURE require_quiz_manager(p_actor_id IN NUMBER, p_quiz_id IN NUMBER) IS
@@ -52,13 +52,32 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
     BEGIN
         require_editor(p_actor_id);
         v_role := actor_role(p_actor_id);
-        SELECT COUNT(*)
+        SELECT quiz_id
           INTO v_count
           FROM quizzes
          WHERE quiz_id = p_quiz_id
-           AND (author_id = p_actor_id OR v_role = 'ADMIN');
-        IF v_count = 0 THEN
+           AND (author_id = p_actor_id OR v_role = 'ADMIN') FOR UPDATE;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
             RAISE_APPLICATION_ERROR(-20125, 'Удалять можно только свой тест (или под ролью администратора).');
+    END;
+
+    PROCEDURE require_selection_pool(p_quiz_id NUMBER, p_exclude_question NUMBER DEFAULT NULL) IS
+        v_quiz quizzes%ROWTYPE;
+        v_count NUMBER;
+    BEGIN
+        SELECT * INTO v_quiz FROM quizzes WHERE quiz_id = p_quiz_id;
+        IF v_quiz.selection_category_id IS NOT NULL THEN
+            SELECT COUNT(*) INTO v_count FROM questions
+             WHERE quiz_id = p_quiz_id
+               AND category_id = v_quiz.selection_category_id
+               AND difficulty_code = v_quiz.selection_difficulty_code
+               AND (p_exclude_question IS NULL OR question_id <> p_exclude_question);
+            IF v_count < v_quiz.question_limit THEN
+                RAISE_APPLICATION_ERROR(-20140, 'Недостаточно вопросов для подбора: нужно '
+                    || v_quiz.question_limit || ', доступно ' || v_count
+                    || '. Добавьте вопросы или измените подбор в черновике.');
+            END IF;
         END IF;
     END;
 
@@ -253,6 +272,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
     BEGIN
         require_quiz_owner(p_actor_id, p_quiz_id);
         SELECT COUNT(*) INTO v_question_count FROM questions WHERE quiz_id = p_quiz_id;
+        require_selection_pool(p_quiz_id);
         IF v_question_count = 0 THEN
             RAISE_APPLICATION_ERROR(-20108, 'В тест необходимо добавить хотя бы один вопрос.');
         END IF;
@@ -322,6 +342,40 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
         END IF;
     END;
 
+    PROCEDURE set_quiz_selection (
+        p_actor_id IN NUMBER,
+        p_quiz_id IN NUMBER,
+        p_question_limit IN NUMBER,
+        p_category_id IN NUMBER,
+        p_difficulty_code IN VARCHAR2
+    ) IS
+        v_count NUMBER;
+    BEGIN
+        require_quiz_owner(p_actor_id, p_quiz_id);
+        IF p_question_limit IS NULL AND p_category_id IS NULL AND p_difficulty_code IS NULL THEN
+            UPDATE quizzes SET question_limit = NULL, selection_category_id = NULL,
+                selection_difficulty_code = NULL WHERE quiz_id = p_quiz_id;
+            RETURN;
+        END IF;
+        IF p_question_limit IS NULL OR p_question_limit < 1 OR p_question_limit > 1000
+           OR p_question_limit <> TRUNC(p_question_limit)
+           OR p_category_id IS NULL OR p_difficulty_code IS NULL THEN
+            RAISE_APPLICATION_ERROR(-20138, 'Для подбора укажите категорию, сложность и целое количество от 1 до 1000.');
+        END IF;
+        SELECT COUNT(*) INTO v_count FROM categories c JOIN quizzes q ON q.topic_id = c.topic_id
+         WHERE q.quiz_id = p_quiz_id AND c.category_id = p_category_id;
+        IF v_count = 0 THEN
+            RAISE_APPLICATION_ERROR(-20139, 'Категория подбора должна принадлежать тематике теста.');
+        END IF;
+        SELECT COUNT(*) INTO v_count FROM difficulty_levels WHERE difficulty_code = p_difficulty_code;
+        IF v_count = 0 THEN
+            RAISE_APPLICATION_ERROR(-20138, 'Выберите существующий уровень сложности.');
+        END IF;
+        -- An incomplete draft may be saved; publishing and starting require a full pool.
+        UPDATE quizzes SET question_limit = p_question_limit, selection_category_id = p_category_id,
+            selection_difficulty_code = p_difficulty_code WHERE quiz_id = p_quiz_id;
+    END;
+
     PROCEDURE grant_access (
         p_actor_id IN NUMBER,
         p_quiz_id IN NUMBER,
@@ -351,6 +405,10 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
         SELECT COUNT(*) INTO v_question_count FROM questions WHERE category_id = p_category_id;
         IF v_question_count > 0 THEN
             RAISE_APPLICATION_ERROR(-20114, 'Категория используется в вопросах. Сначала удалите вопросы черновиков.');
+        END IF;
+        SELECT COUNT(*) INTO v_question_count FROM quizzes WHERE selection_category_id = p_category_id;
+        IF v_question_count > 0 THEN
+            RAISE_APPLICATION_ERROR(-20141, 'Категория используется в подборе теста. Сначала измените настройки подбора.');
         END IF;
         DELETE FROM categories WHERE category_id = p_category_id;
         IF SQL%ROWCOUNT = 0 THEN
@@ -383,12 +441,17 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
     ) IS
         v_quiz_id NUMBER;
         v_in_progress NUMBER;
+        v_status quizzes.status%TYPE;
     BEGIN
         SELECT quiz_id
           INTO v_quiz_id
           FROM questions
          WHERE question_id = p_question_id;
         require_quiz_manager(p_admin_id, v_quiz_id);
+        SELECT status INTO v_status FROM quizzes WHERE quiz_id = v_quiz_id;
+        IF v_status = 'PUBLISHED' THEN
+            require_selection_pool(v_quiz_id, p_question_id);
+        END IF;
 
         SELECT COUNT(*)
           INTO v_in_progress

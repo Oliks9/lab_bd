@@ -13,6 +13,7 @@ PROMPT === Creating standalone functions ===
 @@02_functions/fn_hash_password.sql
 @@02_functions/fn_can_access_quiz.sql
 @@02_functions/fn_attempt_percent.sql
+@@02_functions/fn_quiz_pool_count.sql
 
 PROMPT === Creating account procedures ===
 @@03_procedures/pr_register_user.sql

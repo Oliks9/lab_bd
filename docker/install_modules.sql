@@ -13,6 +13,7 @@ PROMPT === Creating standalone functions ===
 @/opt/quiz-project/sql/02_functions/fn_hash_password.sql
 @/opt/quiz-project/sql/02_functions/fn_can_access_quiz.sql
 @/opt/quiz-project/sql/02_functions/fn_attempt_percent.sql
+@/opt/quiz-project/sql/02_functions/fn_quiz_pool_count.sql
 
 PROMPT === Creating account procedures ===
 @/opt/quiz-project/sql/03_procedures/pr_register_user.sql

@@ -61,7 +61,8 @@ class OracleGateway:
         return self._rows(
             """
             SELECT quiz_id, topic_title, quiz_title, description, timer_mode, duration_minutes,
-                   question_count, max_points, author_name, access_mode, status, attempt_limit
+                   question_count, max_points, author_name, access_mode, status, attempt_limit,
+                   selection_category_id, selection_category_title, selection_difficulty_name, pool_count
               FROM v_quiz_catalog
              WHERE fn_can_access_quiz(:user_id, quiz_id) = 1
                AND (:topic_id IS NULL OR topic_id = :topic_id)
@@ -71,11 +72,15 @@ class OracleGateway:
         )
 
     def start_attempt(self, user_id: int, quiz_id: int) -> int:
-        with self.connection.cursor() as cursor:
-            attempt_id = cursor.var(int)
-            cursor.callproc("pkg_testing.start_attempt", [user_id, quiz_id, attempt_id])
-        self.connection.commit()
-        return int(attempt_id.getvalue())
+        try:
+            with self.connection.cursor() as cursor:
+                attempt_id = cursor.var(int)
+                cursor.callproc("pkg_testing.start_attempt", [user_id, quiz_id, attempt_id])
+            self.connection.commit()
+            return int(attempt_id.getvalue())
+        except Exception:
+            self.connection.rollback()
+            raise
 
     def attempt_questions(self, attempt_id: int):
         return self._rows(
@@ -217,7 +222,8 @@ class OracleGateway:
         return self._rows(
             """
             SELECT q.quiz_id, q.topic_id, t.title AS topic_title, q.title, q.status, q.access_mode,
-                   q.timer_mode, q.duration_minutes, q.show_feedback, q.attempt_limit
+                   q.timer_mode, q.duration_minutes, q.show_feedback, q.attempt_limit,
+                   q.question_limit, q.selection_category_id, q.selection_difficulty_code
               FROM quizzes q JOIN topics t ON t.topic_id = q.topic_id
              WHERE EXISTS (
                  SELECT 1 FROM app_users u WHERE u.user_id = :actor_id
@@ -228,6 +234,29 @@ class OracleGateway:
             """,
             {"actor_id": actor.user_id},
         )
+
+    def selection_pool_count(self, actor_id: int, quiz_id: int, category_id=None, difficulty_code=None):
+        rows = self._rows(
+            """
+            SELECT fn_quiz_pool_count(q.quiz_id, :category_id, :difficulty_code) AS pool_count
+              FROM quizzes q JOIN app_users u ON u.user_id = :actor_id
+             WHERE q.quiz_id = :quiz_id AND u.is_active = 1
+               AND (u.role_code = 'ADMIN' OR (u.role_code = 'AUTHOR' AND q.author_id = u.user_id))
+            """,
+            {"actor_id": actor_id, "quiz_id": quiz_id, "category_id": category_id, "difficulty_code": difficulty_code},
+        )
+        if not rows:
+            raise ValueError("Тест недоступен для редактирования.")
+        return rows[0]["pool_count"]
+
+    def set_quiz_selection(self, actor_id: int, quiz_id: int, question_limit, category_id, difficulty_code):
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.callproc("pkg_admin.set_quiz_selection", [actor_id, quiz_id, question_limit, category_id, difficulty_code])
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
 
     def admin_questions(self, quiz_id: int):
         return self._rows(
@@ -327,19 +356,23 @@ class OracleGateway:
             raise
 
     def publish_quiz(self, actor_id: int, quiz_id: int) -> None:
-        with self.connection.cursor() as cursor:
-            cursor.callproc("pkg_admin.publish_quiz", [actor_id, quiz_id])
-        self.connection.commit()
+        self._commit_procedure("pkg_admin.publish_quiz", [actor_id, quiz_id])
+
+    def _commit_procedure(self, name, params):
+        # Release author-operation row locks on failure as well as success.
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.callproc(name, params)
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
 
     def set_quiz_feedback(self, actor_id: int, quiz_id: int, show_feedback: int) -> None:
-        with self.connection.cursor() as cursor:
-            cursor.callproc("pkg_admin.set_quiz_feedback", [actor_id, quiz_id, show_feedback])
-        self.connection.commit()
+        self._commit_procedure("pkg_admin.set_quiz_feedback", [actor_id, quiz_id, show_feedback])
 
     def set_quiz_attempt_limit(self, actor_id: int, quiz_id: int, attempt_limit: int | None) -> None:
-        with self.connection.cursor() as cursor:
-            cursor.callproc("pkg_admin.set_quiz_attempt_limit", [actor_id, quiz_id, attempt_limit])
-        self.connection.commit()
+        self._commit_procedure("pkg_admin.set_quiz_attempt_limit", [actor_id, quiz_id, attempt_limit])
 
     def grant_access(self, actor_id: int, quiz_id: int, user_id: int) -> None:
         with self.connection.cursor() as cursor:
@@ -357,19 +390,13 @@ class OracleGateway:
         self.connection.commit()
 
     def delete_question(self, admin_id: int, question_id: int) -> None:
-        with self.connection.cursor() as cursor:
-            cursor.callproc("pkg_admin.delete_question", [admin_id, question_id])
-        self.connection.commit()
+        self._commit_procedure("pkg_admin.delete_question", [admin_id, question_id])
 
     def delete_quiz(self, admin_id: int, quiz_id: int) -> None:
-        with self.connection.cursor() as cursor:
-            cursor.callproc("pkg_admin.delete_quiz", [admin_id, quiz_id])
-        self.connection.commit()
+        self._commit_procedure("pkg_admin.delete_quiz", [admin_id, quiz_id])
 
     def archive_quiz(self, admin_id: int, quiz_id: int) -> None:
-        with self.connection.cursor() as cursor:
-            cursor.callproc("pkg_admin.archive_quiz", [admin_id, quiz_id])
-        self.connection.commit()
+        self._commit_procedure("pkg_admin.archive_quiz", [admin_id, quiz_id])
 
     def reset_user_quiz_attempts(self, admin_id: int, user_id: int, quiz_id: int) -> None:
         with self.connection.cursor() as cursor:

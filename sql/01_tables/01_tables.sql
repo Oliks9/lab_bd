@@ -56,6 +56,15 @@ CREATE TABLE quizzes (
         CONSTRAINT ck_quizzes_duration CHECK (duration_minutes BETWEEN 1 AND 1440),
     question_limit NUMBER
         CONSTRAINT ck_quizzes_limit CHECK (question_limit IS NULL OR question_limit > 0),
+    selection_category_id NUMBER
+        CONSTRAINT fk_quizzes_selection_category REFERENCES categories(category_id),
+    selection_difficulty_code VARCHAR2(20)
+        CONSTRAINT fk_quizzes_selection_level REFERENCES difficulty_levels(difficulty_code),
+    CONSTRAINT ck_quizzes_selection CHECK (
+        (selection_category_id IS NULL AND selection_difficulty_code IS NULL)
+        OR (selection_category_id IS NOT NULL AND selection_difficulty_code IS NOT NULL
+            AND question_limit IS NOT NULL AND question_limit BETWEEN 1 AND 1000
+            AND question_limit = TRUNC(question_limit))),
     attempt_limit NUMBER
         CONSTRAINT ck_quizzes_attempt_limit CHECK (attempt_limit IS NULL OR attempt_limit > 0),
     show_feedback NUMBER(1) DEFAULT 1 NOT NULL

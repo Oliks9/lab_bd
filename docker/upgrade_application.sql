@@ -7,11 +7,13 @@ CONNECT quiz_app/"P@ssw0rd"@//localhost:1521/FREEPDB1
 @/opt/quiz-project/sql/08_migrations/20260527_quiz_timer_mode.sql
 @/opt/quiz-project/sql/08_migrations/20260527_ordering_sequence_mode.sql
 @/opt/quiz-project/sql/08_migrations/20260527_attempt_limit.sql
+@/opt/quiz-project/sql/08_migrations/20260912_question_selection.sql
 
 PROMPT === Recompiling PL/SQL application modules without deleting data ===
 @/opt/quiz-project/sql/02_functions/fn_hash_password.sql
 @/opt/quiz-project/sql/02_functions/fn_can_access_quiz.sql
 @/opt/quiz-project/sql/02_functions/fn_attempt_percent.sql
+@/opt/quiz-project/sql/02_functions/fn_quiz_pool_count.sql
 @/opt/quiz-project/sql/03_procedures/pr_register_user.sql
 @/opt/quiz-project/sql/04_triggers/trg_app_users_biu.sql
 @/opt/quiz-project/sql/04_triggers/trg_quizzes_biu.sql
@@ -32,5 +34,6 @@ PROMPT === Recompiling PL/SQL application modules without deleting data ===
 
 @/opt/quiz-project/sql/tests/server_logic_smoke_test.sql
 @/opt/quiz-project/sql/tests/comparison_smoke_test.sql
+@/opt/quiz-project/sql/tests/question_selection_smoke_test.sql
 
 EXIT

@@ -1,6 +1,6 @@
 # Полная карта серверной логики Oracle
 
-Дата актуализации: 27.05.2026
+Дата актуализации: 12.09.2026
 
 ## 1. Зона ответственности Oracle и Python
 
@@ -14,15 +14,15 @@
 |---|---:|---|
 | Таблицы | 15 | `sql/01_tables/01_tables.sql` |
 | Индексы | 5 | `sql/01_tables/02_indexes.sql` |
-| Standalone функции | 3 | `sql/02_functions/*.sql` |
+| Standalone функции | 4 | `sql/02_functions/*.sql` |
 | Standalone процедуры | 2 | `sql/03_procedures/*.sql` |
-| Процедуры в `pkg_admin` | 22 | `sql/05_packages/pkg_admin.pks/.pkb` |
+| Процедуры в `pkg_admin` | 23 | `sql/05_packages/pkg_admin.pks/.pkb` |
 | Процедуры в `pkg_testing` | 6 | `sql/05_packages/pkg_testing.pks/.pkb` |
 | Триггеры | 5 | `sql/04_triggers/*.sql` |
-| Представления | 5 | `sql/06_views/01_views.sql` |
+| Представления | 6 | `sql/06_views/01_views.sql` |
 | Seed-скрипты | 2 | `sql/07_seed/*.sql` |
-| Миграции | 4 | `sql/08_migrations/*.sql` |
-| Smoke-тесты | 5 | `sql/tests/*.sql` |
+| Миграции | 5 | `sql/08_migrations/*.sql` |
+| Smoke-тесты | 7 | `sql/tests/*smoke*.sql` (отдельно `check_invalid_objects.sql`) |
 
 ## 3. Порядок установки и обновления
 
@@ -105,6 +105,10 @@
 - `timer_mode VARCHAR2(15)` NOT NULL, default `QUIZ`, CHECK `IN ('QUIZ','QUESTION')`.
 - `duration_minutes NUMBER` NOT NULL, default `15`, CHECK `BETWEEN 1 AND 1440`.
 - `question_limit NUMBER` NULL, CHECK `question_limit IS NULL OR question_limit > 0`.
+- `selection_category_id NUMBER` NULL, FK на `categories`.
+- `selection_difficulty_code VARCHAR2(20)` NULL, FK на `difficulty_levels`.
+- Оба фильтра NULL: вопросы по порядку (старый `question_limit` ограничивает первые N, если был задан).
+- Оба фильтра заданы: случайные N вопросов из этого теста; `ck_quizzes_selection` требует целое `question_limit` от 1 до 1000. Принадлежность категории тематике проверяет пакет.
 - `attempt_limit NUMBER` NULL, CHECK `attempt_limit IS NULL OR attempt_limit > 0`.
 - `show_feedback NUMBER(1)` NOT NULL, default `1`, CHECK `IN (0,1)`.
 - `access_mode VARCHAR2(15)` NOT NULL, default `PUBLIC`, CHECK `IN ('PUBLIC','RESTRICTED')`.
@@ -253,6 +257,13 @@
 - Результат округляется до 2 знаков.
 - При `max_points = 0` возвращает `0`.
 
+## 6.4. `fn_quiz_pool_count(p_quiz_id, p_category_id, p_difficulty_code) RETURN NUMBER`
+
+Функция из `sql/02_functions/fn_quiz_pool_count.sql` возвращает количество подходящих вопросов внутри одного теста.
+NULL в фильтре означает отсутствие ограничения. Функция не меняет данные и не проверяет роль;
+GUI вызывает её SELECT-запросом с проверкой автора/администратора. `start_attempt` использует её
+до создания попытки для проверки достаточного количества вопросов.
+
 ## 7. Standalone процедуры
 
 ## 7.1. `pr_register_user`
@@ -309,6 +320,8 @@
 - `require_admin` — только `ADMIN`, иначе `-20111`.
 - `require_quiz_owner` — редактирование только своего `DRAFT` (или `ADMIN`), иначе `-20102`.
 - `require_quiz_manager` — удаление/архивирование только своего теста (или `ADMIN`), иначе `-20125`.
+- Обе проверки владельца блокируют строку теста через `FOR UPDATE`; запуск попытки берёт ту же блокировку, чтобы не выбирать набор одновременно с изменением теста.
+- `require_selection_pool(p_quiz_id, p_exclude_question DEFAULT NULL)` проверяет достаточность набора для сохранённых фильтров. Используется при публикации и перед удалением вопроса опубликованного теста. Ошибка `-20140` содержит требуемое и доступное количество.
 
 ## 8.2. Процедуры контента и публикации
 
@@ -461,6 +474,15 @@
 - Логирует событие в `audit_log` (`PROGRESS_RESET_ALL`).
 - Ошибка: `-20122`.
 
+### `set_quiz_selection(p_actor_id, p_quiz_id, p_question_limit, p_category_id, p_difficulty_code)`
+
+Доступна автору своего черновика и администратору любого черновика. Три NULL отключают подбор и снимают
+старый лимит первых вопросов. Иначе все параметры обязательны: N целое 1..1000, категория из тематики
+теста, сложность из справочника. Настройки сохраняются даже при нехватке вопросов: это допустимо
+для черновика, но публикация запрещена до его наполнения. Изменение не пересоздаёт прошлые попытки.
+Ошибки: `-20101`, `-20102`, `-20138`, `-20139`. Процедура не делает COMMIT, клиент фиксирует транзакцию
+после успешного вызова и выполняет ROLLBACK при ошибке.
+
 ## 9. Пакет `pkg_testing`
 
 Назначение: прохождение теста, проверка ответов, таймеры и финализация.
@@ -480,7 +502,10 @@
 - Создает `attempts` с учетом `timer_mode`:
   - `QUIZ`: `deadline_at = started_at + duration_minutes`;
   - `QUESTION`: `question_duration_minutes = duration_minutes`, `active_question_order = 1`.
-- Формирует `attempt_questions` по `questions.seq_no`, учитывает `question_limit`.
+- Без фильтров формирует `attempt_questions` по `questions.seq_no`, учитывает старый `question_limit`.
+- С фильтрами выбирает только вопросы этого теста, категории и сложности. `ROW_NUMBER() OVER (ORDER BY DBMS_RANDOM.VALUE, question_id)` задаёт случайный порядок, ограничение по N оставляет ровно нужное количество без повторов.
+- До вставки проверяет достаточность набора (`-20214`); неуспешный старт не расходует попытку. Набор хранится в `attempt_questions` и не выбирается заново при чтении или показе результатов.
+- Блокирует также строку теста и повторно проверяет публикацию после блокировки.
 - Ошибка пустого теста: `-20201`.
 
 ### `submit_answer(p_attempt_id, p_question_id, p_selected_option_ids, p_text_answer)`
@@ -564,6 +589,12 @@
 - `show_feedback`, `access_mode`, `status`
 - `author_name`
 - `question_count`, `max_points`
+- `selection_category_id`, `selection_category_title`, `selection_difficulty_name`, `pool_count`.
+
+При подборе `question_count` равен N, `pool_count` равен количеству подходящих вопросов,
+`max_points` равен NULL: стоимость случайных наборов может различаться. GUI выводит «По подбору».
+В обычном режиме баллы и количество соответствуют всем вопросам (либо первым N для старого лимита).
+Итог попытки всегда считается по фактическому набору `attempt_questions`.
 
 ## 11.2. `v_attempt_history`
 
@@ -653,6 +684,8 @@ CTE `user_scores` агрегирует количество и сумму про
 - `20260527_attempt_timezone.sql` — переводит timestamps попыток в `TIMESTAMP WITH TIME ZONE`.
 - `20260527_ordering_sequence_mode.sql` — нормализует `ORDERING` на option-based режим.
 - `20260527_attempt_limit.sql` — добавляет `quizzes.attempt_limit` и CHECK-ограничение.
+- `20260912_question_selection.sql` добавляет два nullable-фильтра, FK и CHECK для согласованности подбора. Повторный запуск допустим; существующие значения и попытки не меняются.
+- `sql/upgrade_question_selection.sql` применяет последнюю миграцию и пересоздаёт зависимые модули в текущем подключении без SYS и без удаления данных. Подробная инструкция: `07_question_selection.md`.
 
 ## 13. Seed-данные
 
@@ -672,6 +705,7 @@ CTE `user_scores` агрегирует количество и сумму про
 ## 14. SQL-проверки и smoke-тесты
 
 - `check_invalid_objects.sql` — контроль, что объекты `VALID`.
+- `question_selection_smoke_test.sql` проверяет фильтры, роли, N, публикацию, запуск, сохранность набора, баллы, таймеры, удаление и старый режим. Все данные теста откатываются к savepoint.
 - `auth_smoke_test.sql` — регистрация/вход/создание автора.
 - `content_management_smoke_test.sql` — полный цикл авторинга, публикации, удаления, сбросов.
 - `timezone_smoke_test.sql` — проверка логики в сессии `+03:00`.
@@ -738,6 +772,10 @@ CTE `user_scores` агрегирует количество и сумму про
 - `-20135` — флаг активности должен быть 0 или 1.
 - `-20136` — нельзя отключить текущего администратора.
 - `-20137` — нельзя отключить аккаунт с ролью `ADMIN`.
+- `-20138`: неверное количество, неполные параметры подбора или неизвестная сложность.
+- `-20139`: категория подбора из другой тематики.
+- `-20140`: публикация или удаление вопроса оставляет меньше N подходящих вопросов.
+- `-20141`: нельзя удалить категорию, используемую в настройках подбора.
 
 ## 16.3. `pkg_testing`
 
@@ -755,3 +793,4 @@ CTE `user_scores` агрегирует количество и сумму про
 - `-20211` — лимит попыток для теста исчерпан.
 - `-20212` — время вопроса еще не истекло; переход по таймауту отклонен.
 - `-20213` — у пользователя уже есть активная попытка.
+- `-20214`: недостаточно вопросов для формирования полного набора попытки.

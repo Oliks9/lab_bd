@@ -31,6 +31,8 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
     ) IS
         v_duration quizzes.duration_minutes%TYPE;
         v_limit quizzes.question_limit%TYPE;
+        v_category quizzes.selection_category_id%TYPE;
+        v_difficulty quizzes.selection_difficulty_code%TYPE;
         v_timer_mode quizzes.timer_mode%TYPE;
         v_attempt_limit quizzes.attempt_limit%TYPE;
         v_user_attempt_count NUMBER;
@@ -54,10 +56,19 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
             RAISE_APPLICATION_ERROR(-20213, 'User already has an active attempt.');
         END IF;
 
-        SELECT duration_minutes, question_limit, timer_mode, attempt_limit
-          INTO v_duration, v_limit, v_timer_mode, v_attempt_limit
+        SELECT duration_minutes, question_limit, timer_mode, attempt_limit,
+               selection_category_id, selection_difficulty_code
+          INTO v_duration, v_limit, v_timer_mode, v_attempt_limit, v_category, v_difficulty
           FROM quizzes
-         WHERE quiz_id = p_quiz_id;
+         WHERE quiz_id = p_quiz_id FOR UPDATE;
+
+        -- Recheck publication after acquiring the same lock used by author operations.
+        IF fn_can_access_quiz(p_user_id, p_quiz_id) = 0 THEN
+            RAISE_APPLICATION_ERROR(-20200, 'Quiz is unavailable or not published.');
+        END IF;
+        IF v_category IS NOT NULL AND fn_quiz_pool_count(p_quiz_id, v_category, v_difficulty) < v_limit THEN
+            RAISE_APPLICATION_ERROR(-20214, 'Недостаточно вопросов для подбора. Обратитесь к автору теста.');
+        END IF;
 
         IF v_attempt_limit IS NOT NULL THEN
             SELECT COUNT(*)
@@ -96,9 +107,13 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
         INSERT INTO attempt_questions (attempt_id, question_id, display_order)
         SELECT p_attempt_id, question_id, row_number_value
           FROM (
-                SELECT q.question_id, ROW_NUMBER() OVER (ORDER BY q.seq_no) AS row_number_value
+                SELECT q.question_id, ROW_NUMBER() OVER (
+                    ORDER BY CASE WHEN v_category IS NOT NULL THEN DBMS_RANDOM.VALUE ELSE q.seq_no END,
+                             q.question_id) AS row_number_value
                   FROM questions q
                  WHERE q.quiz_id = p_quiz_id
+                   AND (v_category IS NULL OR q.category_id = v_category)
+                   AND (v_difficulty IS NULL OR q.difficulty_code = v_difficulty)
           )
          WHERE v_limit IS NULL OR row_number_value <= v_limit;
 

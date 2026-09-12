@@ -27,6 +27,7 @@ BEGIN
     drop_if_exists('DROP PROCEDURE pr_login');
     drop_if_exists('DROP PROCEDURE pr_register_user');
     drop_if_exists('DROP FUNCTION fn_attempt_percent');
+    drop_if_exists('DROP FUNCTION fn_quiz_pool_count');
     drop_if_exists('DROP FUNCTION fn_can_access_quiz');
     drop_if_exists('DROP FUNCTION fn_hash_password');
 
