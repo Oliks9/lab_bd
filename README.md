@@ -35,6 +35,7 @@ oracle_quiz_app/
     quiz_client/
       config.py
       database.py
+      diagnostics.py
       theme.py
       ui.py
   build/
@@ -132,22 +133,39 @@ powershell -ExecutionPolicy Bypass -File .\docker\upgrade.ps1
 
 ## Сборка EXE
 
+На новом компьютере создайте отдельное окружение из установленного Python
+(проверено на Python 3.12 x64). Команды выполняются из корня проекта:
+
 ```powershell
+python -m venv .venv
 powershell -ExecutionPolicy Bypass -File .\build\build_exe.ps1 -Python .\.venv\Scripts\python.exe
 ```
 
-Артефакт:
+Если `.venv` уже создана на этом компьютере, первая команда не нужна.
+Не переносите `.venv` с другой машины. Скрипт устанавливает зависимости в выбранный
+Python, проверяет их импорт, собирает EXE и проверяет зависимости внутри него.
+Успешное окончание: `EXE verified`. При ошибке не используйте оставшийся старый EXE.
 
-- `dist\OracleQuizPlatform.exe`
+Артефакт: `dist\OracleQuizPlatform.exe`. Отчёты: `build\pyinstaller\source-check-*.json`
+и `build\pyinstaller\exe-check-*.json`.
 
-Проверка подключения в headless-режиме:
+Проверка нового EXE на другом компьютере без подключения к Oracle:
 
 ```powershell
-.\dist\OracleQuizPlatform.exe --connection-check "localhost:1521/FREEPDB1" "quiz_app" "P@ssw0rd" "admin" "Admin123!"
-$LASTEXITCODE
+$report = Join-Path $PWD ('dependency-check-' + [guid]::NewGuid().ToString('N') + '.json')
+$process = Start-Process -FilePath .\dist\OracleQuizPlatform.exe -ArgumentList @('--self-check', ('"{0}"' -f $report)) -WindowStyle Hidden -Wait -PassThru
+$process.ExitCode
+Get-Content -LiteralPath $report -Raw -Encoding UTF8
 ```
 
-`0` означает успешное подключение и вход.
+`0` означает успешную проверку зависимостей, но не доступность БД.
+Режим `--connection-check DSN SCHEMA_USER SCHEMA_PASSWORD LOGIN PASSWORD` также сохранён;
+он действительно подключается и выполняет вход (включая серверные действия `pr_login`).
+Не публикуйте команды с действующими паролями. Для оконного EXE ожидайте завершения
+через `Start-Process -Wait -PassThru` и читайте `ExitCode`, а не старый `$LASTEXITCODE`.
+
+Подробные шаги для удалённого Windows, ошибки импорта и состав переносимых файлов:
+[Сборка и диагностика зависимостей](docs/08_build_and_dependencies.md).
 
 ## Полная документация
 
@@ -163,3 +181,5 @@ $LASTEXITCODE
 - `docs/04_role_matrix_and_permissions.md` — матрица прав и привязка к конкретным процедурам.
 - `docs/05_release_notes.md` — журнал изменений по версиям.
 - `docs/06_oracle_logic_audit.md` — распределение логики между Oracle и Python, исправления и границы архитектуры.
+- `docs/07_question_selection.md` — подбор N вопросов выбранного теста по категории и сложности.
+- `docs/08_build_and_dependencies.md` — сборка EXE на Windows и диагностика зависимостей без подключения к БД.

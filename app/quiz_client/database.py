@@ -1,9 +1,12 @@
 from dataclasses import dataclass
 
+ORACLEDB_IMPORT_ERROR = None
+
 try:
     import oracledb
-except ImportError:
+except ImportError as exc:
     oracledb = None
+    ORACLEDB_IMPORT_ERROR = f"{type(exc).__name__}: {exc}"
 
 
 @dataclass
@@ -23,7 +26,14 @@ class OracleGateway:
 
     def connect(self, dsn: str, schema_user: str, schema_password: str) -> None:
         if oracledb is None:
-            raise DatabaseUnavailable("Модуль oracledb не установлен. Используйте собранное приложение или установите requirements.txt.")
+            raise DatabaseUnavailable(
+                "Не удалось загрузить драйвер Oracle (oracledb). "
+                "Причиной может быть отсутствие пакета, его зависимости или DLL.\n\n"
+                f"Подробности: {ORACLEDB_IMPORT_ERROR}\n\n"
+                "Для EXE выполните диагностику --self-check и пересоберите приложение "
+                "через build/build_exe.ps1. Установка пакетов в Python сама по себе "
+                "не изменяет уже собранный EXE."
+            )
         self.connection = oracledb.connect(user=schema_user, password=schema_password, dsn=dsn)
 
     def close(self) -> None:
