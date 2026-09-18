@@ -371,7 +371,6 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
         IF v_count = 0 THEN
             RAISE_APPLICATION_ERROR(-20138, 'Выберите существующий уровень сложности.');
         END IF;
-        -- An incomplete draft may be saved; publishing and starting require a full pool.
         UPDATE quizzes SET question_limit = p_question_limit, selection_category_id = p_category_id,
             selection_difficulty_code = p_difficulty_code WHERE quiz_id = p_quiz_id;
     END;

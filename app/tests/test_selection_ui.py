@@ -1,4 +1,3 @@
-"""Tk selection controls with an in-memory gateway; no Oracle data is modified."""
 import unittest
 from copy import deepcopy
 from tkinter import ttk

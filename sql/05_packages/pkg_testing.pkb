@@ -38,7 +38,6 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
         v_user_attempt_count NUMBER;
         v_count NUMBER;
     BEGIN
-        -- Serialize starts for one user before checking active attempts and limits.
         BEGIN
             SELECT user_id INTO v_count FROM app_users
              WHERE user_id = p_user_id AND is_active = 1 FOR UPDATE;
@@ -62,7 +61,6 @@ CREATE OR REPLACE PACKAGE BODY pkg_testing AS
           FROM quizzes
          WHERE quiz_id = p_quiz_id FOR UPDATE;
 
-        -- Recheck publication after acquiring the same lock used by author operations.
         IF fn_can_access_quiz(p_user_id, p_quiz_id) = 0 THEN
             RAISE_APPLICATION_ERROR(-20200, 'Quiz is unavailable or not published.');
         END IF;

@@ -15,7 +15,6 @@ DECLARE
                          p_max NUMBER DEFAULT 100, p_quiz NUMBER DEFAULT NULL) RETURN NUMBER IS
         v_id NUMBER;
     BEGIN
-        -- Persisted-score fixtures isolate reporting from answer-scoring tests.
         INSERT INTO attempts (user_id, quiz_id, status, max_points, awarded_points, score_percent)
         VALUES (p_user, NVL(p_quiz, v_quiz), p_status, p_max, p_score, p_score)
         RETURNING attempt_id INTO v_id;

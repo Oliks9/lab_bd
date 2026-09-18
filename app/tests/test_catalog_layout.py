@@ -1,4 +1,3 @@
-"""Catalog layout regressions, independent of Oracle and the Windows desktop size."""
 import tkinter as tk
 import unittest
 from tkinter import ttk

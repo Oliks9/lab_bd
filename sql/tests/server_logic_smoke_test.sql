@@ -59,7 +59,6 @@ BEGIN
     SELECT active_question_order INTO v_order FROM attempts WHERE attempt_id = v_attempt;
     check_condition(v_order = 1, 'Early timeout changed the active question.');
 
-    -- Simulate elapsed server time without waiting or changing the system clock.
     UPDATE attempts SET question_started_at = SYSTIMESTAMP - INTERVAL '2' MINUTE
      WHERE attempt_id = v_attempt;
     BEGIN

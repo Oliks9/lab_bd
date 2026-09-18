@@ -398,7 +398,6 @@ class QuizApplication(tk.Tk):
         try:
             self.gateway.abandon_attempt(attempt_id)
         except Exception:
-            # Ignore transport errors during app shutdown/logout.
             pass
 
     def logout(self):
@@ -446,7 +445,6 @@ class QuizApplication(tk.Tk):
         rows_by_id = {}
 
         detail_outer, detail = self.panel(body, padding=SPACING["md"])
-        # Reserve the action before letting the table fill the remaining space.
         detail_outer.pack(side="bottom", fill="x", pady=(SPACING["sm"], 0))
         outer.pack(fill="both", expand=True)
         footer = ttk.Frame(detail, style="Panel.TFrame")
@@ -575,7 +573,6 @@ class QuizApplication(tk.Tk):
         start_button.pack(side="bottom")
 
         def fit_summary(_event=None):
-            # Keep two table rows available even at high DPI; only the summary scrolls.
             row_height = int(ttk.Style(self).lookup("Treeview", "rowheight"))
             table_height = outer.winfo_reqheight() - (int(tree.cget("height")) - 2) * row_height
             detail_padding = detail_outer.winfo_reqheight() - viewport.winfo_reqheight()

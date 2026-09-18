@@ -1,5 +1,3 @@
-"""Offline checks for the Python environment and the frozen application."""
-
 import json
 import platform
 import struct
@@ -23,7 +21,6 @@ def check_cryptography():
     import cryptography
     from cryptography.fernet import Fernet
 
-    # Exercise native crypto bindings, not just the top-level Python package.
     cipher = Fernet(Fernet.generate_key())
     payload = b"Oracle Quiz dependency check"
     if cipher.decrypt(cipher.encrypt(payload)) != payload:

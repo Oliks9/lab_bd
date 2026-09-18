@@ -369,7 +369,6 @@ class OracleGateway:
         self._commit_procedure("pkg_admin.publish_quiz", [actor_id, quiz_id])
 
     def _commit_procedure(self, name, params):
-        # Release author-operation row locks on failure as well as success.
         try:
             with self.connection.cursor() as cursor:
                 cursor.callproc(name, params)

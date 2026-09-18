@@ -34,9 +34,10 @@ PROMPT === Creating business packages ===
 PROMPT === Creating report views ===
 @/opt/quiz-project/sql/06_views/01_views.sql
 
-PROMPT === Loading initial roles, dictionary values, admin and demo quiz ===
+PROMPT === Loading dictionaries, three accounts and three demo quizzes ===
 @/opt/quiz-project/sql/07_seed/01_reference_data.sql
 @/opt/quiz-project/sql/07_seed/02_admin_and_demo_quiz.sql
+@/opt/quiz-project/sql/07_seed/03_subjects_and_users.sql
 
 COMMIT;
 PROMPT === Quiz platform installed successfully ===

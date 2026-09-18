@@ -73,7 +73,6 @@ BEGIN
         pkg_admin.publish_quiz(v_author, v_quiz);
         RAISE_APPLICATION_ERROR(-20982, 'Underfilled quiz must not publish');
     EXCEPTION WHEN OTHERS THEN IF SQLCODE <> -20140 THEN RAISE; END IF; END;
-    -- Simulate stale/direct SQL configuration to test the independent start guard.
     UPDATE quizzes SET status = 'PUBLISHED' WHERE quiz_id = v_quiz;
     BEGIN
         pkg_testing.start_attempt(v_user, v_quiz, v_attempt);
@@ -129,7 +128,6 @@ BEGIN
      WHERE aq.attempt_id = v_attempt AND aq.display_order = q.seq_no;
     check_ok(v_count = 7, 'All mode must preserve the original order');
     pkg_testing.abandon_attempt(v_attempt);
-    -- Legacy first-N settings remain compatible until explicitly changed by the author.
     UPDATE quizzes SET question_limit = 2 WHERE quiz_id = v_quiz;
     pkg_testing.start_attempt(v_user, v_quiz, v_attempt);
     SELECT COUNT(*) INTO v_count FROM attempt_questions WHERE attempt_id = v_attempt;

@@ -10,7 +10,6 @@ $WorkPath = Join-Path $ProjectRoot "build\pyinstaller"
 $SpecPath = Join-Path $ProjectRoot "build"
 $TclRuntime = Join-Path $ProjectRoot "build\tcl_runtime"
 
-# Resolve relative interpreter paths before changing the working directory.
 $ResolvedPython = & $Python -c "import sys; print(sys.executable)"
 if ($LASTEXITCODE -ne 0 -or -not $ResolvedPython) {
     throw "Cannot run the selected Python interpreter: $Python"
@@ -41,7 +40,6 @@ try {
         throw "Python dependency conflicts detected. No new EXE was built."
     }
 
-    # This local workaround is only needed by the bundled Codex Python runtime.
     if (Test-Path (Join-Path $TclRuntime "tcl8.6\init.tcl")) {
         $env:PYTHONPATH = "$(Join-Path $TclRuntime 'bin');$env:PYTHONPATH"
         $env:TCL_LIBRARY = "build/tcl_runtime/tcl8.6"
@@ -71,7 +69,6 @@ try {
         throw "EXE build failed (exit code $LASTEXITCODE)."
     }
 
-    # Unique report names prevent a stale report from passing a failed build.
     $Check = Start-Process -FilePath $ExePath `
         -ArgumentList @('--self-check', ('"{0}"' -f $ExeReport)) `
         -WindowStyle Hidden -PassThru

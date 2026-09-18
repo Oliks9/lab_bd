@@ -11,6 +11,7 @@ ALTER USER quiz_app QUOTA UNLIMITED ON USERS;
 PROMPT === Installing quiz application objects as QUIZ_APP ===
 CONNECT quiz_app/"P@ssw0rd"@//localhost:1521/FREEPDB1
 @/opt/quiz-project/docker/install_modules.sql
+@/opt/quiz-project/sql/tests/seed_installation_test.sql
 
 PROMPT === Checking compiled Oracle objects ===
 @/opt/quiz-project/sql/tests/check_invalid_objects.sql
