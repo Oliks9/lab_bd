@@ -2322,58 +2322,95 @@ class QuizApplication(tk.Tk):
             users_tree.selection_set(users_tree.get_children()[0])
             show_attempts()
 
+    def show_user_form(self, title, fields, confirm_text, submit, success_message, refresh=False):
+        dialog = tk.Toplevel(self)
+        dialog.title(title)
+        dialog.transient(self)
+        dialog.resizable(True, False)
+        form = ttk.Frame(dialog, style="Panel.TFrame", padding=20)
+        form.pack(fill="both", expand=True)
+        entries = []
+        for label, hidden in fields:
+            ttk.Label(form, text=label, style="Muted.TLabel").pack(anchor="w", pady=(0, 4))
+            entry = ttk.Entry(form, width=32, show="*" if hidden else "")
+            entry.pack(fill="x", pady=(0, 12))
+            entries.append(entry)
+        error = ttk.Label(form, text="", style="Card.TLabel", foreground=COLORS["red"], wraplength=480)
+        error.pack(fill="x", pady=(0, 8))
+
+        def save(_event=None):
+            try:
+                submit(*(entry.get() for entry in entries))
+            except Exception as exc:
+                error.configure(text=str(exc).splitlines()[0] if str(exc) else "Не удалось выполнить операцию.")
+                return "break"
+            dialog.destroy()
+            if refresh:
+                self.show_admin("Команда")
+            messagebox.showinfo(title, success_message)
+            return "break"
+
+        def cancel(_event=None):
+            dialog.destroy()
+            return "break"
+
+        buttons = ttk.Frame(form, style="Panel.TFrame")
+        buttons.pack(fill="x")
+        ttk.Button(buttons, text=confirm_text, style="Primary.TButton", command=save).pack(side="right")
+        ttk.Button(buttons, text="Отмена", style="Quiet.TButton", command=cancel).pack(side="right", padx=(0, 10))
+        dialog.bind("<Return>", save)
+        dialog.bind("<Escape>", cancel)
+        dialog.protocol("WM_DELETE_WINDOW", cancel)
+        dialog.update_idletasks()
+        x = self.winfo_rootx() + max(0, (self.winfo_width() - dialog.winfo_reqwidth()) // 2)
+        y = self.winfo_rooty() + max(0, (self.winfo_height() - dialog.winfo_reqheight()) // 2)
+        dialog.geometry(f"+{x}+{y}")
+        dialog.grab_set()
+        entries[0].focus_set()
+
     def build_admin_users(self, notebook):
-        tab = ttk.Frame(notebook, style="App.TFrame", padding=16)
+        tab = ttk.Frame(notebook, style="App.TFrame", padding=10)
         notebook.add(tab, text="Команда")
-        creator_outer, creator = self.panel(tab, padding=16)
-        creator_outer.pack(fill="x", pady=(0, 12))
-        ttk.Label(creator, text="Добавить автора", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=4, sticky="w")
-        ttk.Label(
-            creator,
-            text="Автор входит по своему логину и может собирать, публиковать и анализировать тесты.",
-            style="Muted.TLabel",
-        ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(4, 14))
-        ttk.Label(creator, text="Имя автора", style="Muted.TLabel").grid(row=2, column=0, sticky="w")
-        ttk.Label(creator, text="Логин", style="Muted.TLabel").grid(row=2, column=1, sticky="w", padx=(12, 0))
-        ttk.Label(creator, text="Временный пароль", style="Muted.TLabel").grid(row=2, column=2, sticky="w", padx=(12, 0))
-        author_name = ttk.Entry(creator)
-        author_login = ttk.Entry(creator)
-        author_password = ttk.Entry(creator, show="*")
-        author_name.grid(row=3, column=0, sticky="ew", pady=(4, 0))
-        author_login.grid(row=3, column=1, sticky="ew", padx=(12, 0), pady=(4, 0))
-        author_password.grid(row=3, column=2, sticky="ew", padx=(12, 0), pady=(4, 0))
-        creator.columnconfigure(0, weight=2)
-        creator.columnconfigure(1, weight=1)
-        creator.columnconfigure(2, weight=1)
+        actions_outer, actions = self.panel(tab, padding=8)
+        actions_outer.pack(side="bottom", fill="x", pady=(8, 0))
+        action_buttons = ttk.Frame(actions, style="Panel.TFrame")
+        action_buttons.pack(fill="x")
 
         def create_author():
-            if not author_name.get().strip() or not author_login.get().strip() or not author_password.get():
-                messagebox.showwarning("Автор", "Укажите имя, логин и временный пароль автора.")
-                return
-            try:
-                self.gateway.create_author(
-                    self.user.user_id,
-                    author_login.get().strip(),
-                    author_password.get(),
-                    author_name.get().strip(),
-                )
-                messagebox.showinfo("Автор", "Учетная запись автора создана. Данные для входа можно передать автору.")
-                self.show_admin()
-            except Exception as exc:
-                self.report_error(exc)
+            def save(name, login, password):
+                if not name.strip() or not login.strip() or not password:
+                    raise ValueError("Укажите имя, логин и временный пароль автора.")
+                self.gateway.create_author(self.user.user_id, login.strip(), password, name.strip())
 
-        ttk.Button(creator, text="Создать автора", style="Primary.TButton", command=create_author).grid(
-            row=3, column=3, sticky="e", padx=(16, 0), pady=(4, 0)
-        )
+            self.show_user_form(
+                "Добавить автора",
+                [("Имя автора", False), ("Логин", False), ("Временный пароль", True)],
+                "Создать автора", save,
+                "Учетная запись автора создана. Данные для входа можно передать автору.",
+                refresh=True,
+            )
 
-        outer, content = self.panel(tab, padding=15)
+        outer, content = self.panel(tab, padding=8)
         outer.pack(fill="both", expand=True)
-        ttk.Label(content, text="Пользователи и роли", style="CardTitle.TLabel").pack(anchor="w", pady=(0, 10))
-        tree = ttk.Treeview(content, columns=("login", "name", "role", "active"), show="headings")
+        toolbar = ttk.Frame(content, style="Panel.TFrame")
+        toolbar.pack(fill="x", pady=(0, 6))
+        ttk.Button(toolbar, text="Добавить автора", style="Primary.TButton", command=create_author).pack(side="right")
+        selection_label = ttk.Label(toolbar, text="Выберите пользователя в таблице", style="Muted.TLabel")
+        selection_label.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        table = ttk.Frame(content, style="Panel.TFrame")
+        table.pack(fill="both", expand=True)
+        table.rowconfigure(0, weight=1)
+        table.columnconfigure(0, weight=1)
+        tree = ttk.Treeview(table, columns=("login", "name", "role", "active"), show="headings", selectmode="browse", height=4)
         for name, title, width in (("login", "Логин", 180), ("name", "Имя", 360), ("role", "Роль", 170), ("active", "Активен", 90)):
             tree.heading(name, text=title)
-            tree.column(name, width=width)
-        tree.pack(fill="both", expand=True)
+            tree.column(name, width=width, minwidth=width)
+        vertical = ttk.Scrollbar(table, orient="vertical", command=tree.yview)
+        horizontal = ttk.Scrollbar(table, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
+        tree.grid(row=0, column=0, sticky="nsew")
+        vertical.grid(row=0, column=1, sticky="ns")
+        horizontal.grid(row=1, column=0, sticky="ew")
         user_active_flags = {}
         for row in self.gateway.users():
             role_name = ROLE_NAMES.get(row["role_code"], row["role_code"])
@@ -2409,16 +2446,17 @@ class QuizApplication(tk.Tk):
             user_id = selected_user_id()
             if user_id is None:
                 return
-            new_password = password_entry.get()
-            if len(new_password) < 6:
-                messagebox.showwarning("Пароль", "Новый пароль должен содержать не менее 6 символов.")
-                return
-            try:
+            login = tree.item(str(user_id), "values")[0]
+
+            def save(new_password):
+                if len(new_password) < 6:
+                    raise ValueError("Новый пароль должен содержать не менее 6 символов.")
                 self.gateway.set_user_password(self.user.user_id, user_id, new_password)
-                messagebox.showinfo("Пароль", "Пароль пользователя обновлен.")
-                password_entry.delete(0, "end")
-            except Exception as exc:
-                self.report_error(exc)
+
+            self.show_user_form(
+                f"Сменить пароль: {login}", [("Новый пароль (не менее 6 символов)", True)],
+                "Сохранить пароль", save, "Пароль пользователя обновлен.",
+            )
 
         def set_user_active(is_active: int):
             user_id = selected_user_id()
@@ -2467,32 +2505,47 @@ class QuizApplication(tk.Tk):
             except Exception as exc:
                 self.report_error(exc)
 
-        actions = ttk.Frame(tab, style="App.TFrame")
-        actions.pack(fill="x", pady=(12, 0))
-        role_actions = ttk.Frame(actions, style="App.TFrame")
-        role_actions.pack(side="left")
-        ttk.Button(role_actions, text="Назначить автором", style="Primary.TButton", command=lambda: apply_role("AUTHOR")).pack(side="left")
-        ttk.Button(role_actions, text="Сделать участником", style="Quiet.TButton", command=lambda: apply_role("USER")).pack(side="left", padx=(10, 0))
+        buttons = [
+            ttk.Button(action_buttons, text=text, style=style, command=command, state="disabled")
+            for text, style, command in (
+                ("Назначить автором", "Quiet.TButton", lambda: apply_role("AUTHOR")),
+                ("Сделать участником", "Quiet.TButton", lambda: apply_role("USER")),
+                ("Сменить пароль", "Quiet.TButton", change_password),
+                ("Отключить", "Quiet.TButton", lambda: set_user_active(0)),
+                ("Включить", "Quiet.TButton", lambda: set_user_active(1)),
+                ("Удалить пользователя", "Danger.TButton", delete_user),
+            )
+        ]
 
-        security_actions = ttk.Frame(actions, style="App.TFrame")
-        security_actions.pack(side="right")
-        ttk.Label(security_actions, text="Новый пароль", style="Muted.TLabel").pack(side="left", padx=(0, 8))
-        password_entry = ttk.Entry(security_actions, width=20, show="*")
-        password_entry.pack(side="left")
-        ttk.Button(security_actions, text="Сменить пароль", style="Quiet.TButton", command=change_password).pack(side="left", padx=(8, 0))
-        ttk.Button(
-            security_actions,
-            text="Отключить",
-            style="Quiet.TButton",
-            command=lambda: set_user_active(0),
-        ).pack(side="left", padx=(8, 0))
-        ttk.Button(
-            security_actions,
-            text="Включить",
-            style="Quiet.TButton",
-            command=lambda: set_user_active(1),
-        ).pack(side="left", padx=(8, 0))
-        ttk.Button(security_actions, text="Удалить пользователя", style="Danger.TButton", command=delete_user).pack(side="left", padx=(8, 0))
+        def arrange_actions(_event=None):
+            width = action_buttons.winfo_width()
+            if width <= 1:
+                return
+            x = y = row_height = 0
+            for button in buttons:
+                button_width = button.winfo_reqwidth()
+                button_height = button.winfo_reqheight()
+                if x and x + button_width > width:
+                    x = 0
+                    y += row_height + 8
+                    row_height = 0
+                button.place(x=x, y=y, width=button_width, height=button_height)
+                x += button_width + 8
+                row_height = max(row_height, button_height)
+            action_buttons.configure(height=y + row_height)
+
+        def update_selection(_event=None):
+            selected = tree.selection()
+            if selected:
+                login = tree.item(selected[0], "values")[0]
+                selection_label.configure(text=f"Пользователь: {login}")
+            else:
+                selection_label.configure(text="Выберите пользователя в таблице")
+            for button in buttons:
+                button.state(["!disabled"] if selected else ["disabled"])
+
+        action_buttons.bind("<Configure>", arrange_actions)
+        tree.bind("<<TreeviewSelect>>", update_selection)
 
     def destroy(self):
         self.abandon_active_attempt()
