@@ -24,7 +24,34 @@ BEGIN
     SELECT COUNT(*) INTO v_count FROM app_users;
     expect_count(v_count, 3, 'Initial account count');
     SELECT COUNT(*) INTO v_count FROM attempts;
-    expect_count(v_count, 0, 'Initial attempt count');
+    expect_count(v_count, 24, 'Initial attempt count');
+    SELECT COUNT(*) INTO v_count FROM attempts
+     WHERE status = 'FINISHED' AND finished_at IS NOT NULL AND max_points = 8;
+    expect_count(v_count, 24, 'Persisted completed attempts');
+    SELECT COUNT(*) INTO v_count FROM user_answers;
+    expect_count(v_count, 144, 'Persisted answers');
+    SELECT COUNT(*) INTO v_count FROM attempt_questions;
+    expect_count(v_count, 144, 'Persisted question snapshots');
+    SELECT COUNT(*) INTO v_count FROM (
+        SELECT a.user_id, a.quiz_id FROM attempts a
+          JOIN app_users u ON u.user_id = a.user_id
+         WHERE u.login IN ('author', 'student') AND a.status = 'FINISHED'
+         GROUP BY a.user_id, a.quiz_id HAVING COUNT(*) = 4);
+    expect_count(v_count, 6, 'Four sessions per participant and quiz');
+    SELECT COUNT(*) INTO v_count FROM (
+        SELECT a.user_id FROM attempts a JOIN app_users u ON u.user_id = a.user_id
+         WHERE u.login IN ('author', 'student') GROUP BY a.user_id HAVING COUNT(*) >= 10);
+    expect_count(v_count, 2, 'Two participants with at least ten sessions each');
+    SELECT COUNT(*) INTO v_count FROM (
+        SELECT a.user_id, q.type_code FROM user_answers ua
+          JOIN attempts a ON a.attempt_id = ua.attempt_id
+          JOIN questions q ON q.question_id = ua.question_id
+         GROUP BY a.user_id, q.type_code HAVING COUNT(*) = 12);
+    expect_count(v_count, 12, 'All six answer types covered for both participants');
+    SELECT COUNT(*) INTO v_count FROM (
+        SELECT score_percent FROM attempts WHERE score_percent IN (0, 37.5, 62.5, 100)
+         GROUP BY score_percent HAVING COUNT(*) = 6);
+    expect_count(v_count, 4, 'Demo score distribution');
     SELECT COUNT(*) INTO v_count FROM quizzes;
     expect_count(v_count, 3, 'Initial quiz count');
     SELECT COUNT(*) INTO v_count FROM topics;
@@ -93,7 +120,9 @@ BEGIN
         DBMS_OUTPUT.PUT_LINE('Seed quiz passed: ' || quiz.title || ', score=' || v_score);
     END LOOP;
     ROLLBACK TO before_seed_installation_test;
-    DBMS_OUTPUT.PUT_LINE('Seed installation test successful: three accounts, three quizzes, eighteen questions; attempts rolled back.');
+    SELECT COUNT(*) INTO v_count FROM attempts;
+    expect_count(v_count, 24, 'Demo attempts survive test rollback');
+    DBMS_OUTPUT.PUT_LINE('Seed installation test successful: three accounts, three quizzes, twenty-four saved sessions; verification attempts rolled back.');
 EXCEPTION WHEN OTHERS THEN
     ROLLBACK TO before_seed_installation_test;
     RAISE;

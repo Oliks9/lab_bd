@@ -34,10 +34,11 @@ PROMPT === Creating business packages ===
 PROMPT === Creating report views ===
 @@06_views/01_views.sql
 
-PROMPT === Loading dictionaries, three accounts and three demo quizzes ===
+PROMPT === Loading dictionaries, three accounts, three quizzes and saved demo sessions ===
 @@07_seed/01_reference_data.sql
 @@07_seed/02_admin_and_demo_quiz.sql
 @@07_seed/03_subjects_and_users.sql
+@@07_seed/04_demo_attempts.sql
 
 COMMIT;
 PROMPT === Quiz platform installed successfully ===
