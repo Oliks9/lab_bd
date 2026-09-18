@@ -5,6 +5,7 @@ from tkinter import messagebox, ttk
 from .config import ConnectionSettings, load_settings, save_settings
 from .database import OracleGateway, SessionUser
 from .theme import COLORS, configure_theme
+from .layout import ScrollArea, ScrollTable, flow_row, responsive_columns, reveal_widget, scroll_event
 
 ROLE_NAMES = {
     "USER": "Участник",
@@ -49,6 +50,10 @@ class QuizApplication(tk.Tk):
         self.user: SessionUser | None = None
         self.page = ttk.Frame(self, style="App.TFrame", padding=SPACING["lg"])
         self.page.pack(fill="both", expand=True)
+        self.page_shell = self.page
+        for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.bind_all(sequence, scroll_event, add="+")
+        self.bind_all("<FocusIn>", lambda event: reveal_widget(event.widget), add="+")
         self.active_attempt_id = None
         self.active_questions = []
         self.active_index = 0
@@ -143,11 +148,21 @@ class QuizApplication(tk.Tk):
             suffix = "попыток"
         return f"{value} {suffix}"
 
-    def clear_page(self):
+    def clear_page(self, scrollable=False):
         self.cancel_timer()
         self.unbind("<Return>")
-        for widget in self.page.winfo_children():
+        for widget in self.page_shell.winfo_children():
             widget.destroy()
+        self.page = self.page_shell
+        if scrollable:
+            area = ScrollArea(self.page_shell)
+            area.pack(fill="both", expand=True)
+            self.page = area.content
+
+    def admin_tab(self, notebook, title):
+        area = ScrollArea(notebook, padding=10)
+        notebook.add(area, text=title)
+        return area.content
 
     def set_enter_action(self, action):
         self.unbind("<Return>")
@@ -165,7 +180,7 @@ class QuizApplication(tk.Tk):
 
     def heading(self, title, subtitle="", with_navigation=True):
         shell = tk.Frame(self.page, bg=COLORS["panel"], highlightthickness=1, highlightbackground=COLORS["line"])
-        shell.pack(fill="x", pady=(0, 20))
+        shell.pack(fill="x", pady=(0, 12))
         topbar = tk.Frame(shell, bg=COLORS["brand"], height=40)
         topbar.pack(fill="x")
         tk.Label(
@@ -182,6 +197,8 @@ class QuizApplication(tk.Tk):
             tk.Label(
                 topbar,
                 text=f"{self.user.full_name} · {role_name}",
+                wraplength=560,
+                justify="right",
                 bg=COLORS["brand"],
                 fg="#ffffff",
                 font=("Segoe UI", 9),
@@ -189,21 +206,22 @@ class QuizApplication(tk.Tk):
                 pady=8,
             ).pack(side="right")
 
-        header = ttk.Frame(shell, style="Panel.TFrame", padding=(16, 14))
+        header = ttk.Frame(shell, style="Panel.TFrame", padding=(16, 8))
         header.pack(fill="x")
         left = ttk.Frame(header, style="Panel.TFrame")
-        left.pack(side="left", fill="x", expand=True)
-        ttk.Label(left, text=title, style="PageTitle.TLabel").pack(anchor="w")
+        left.pack(fill="x")
+        ttk.Label(left, text=title, style="PageTitle.TLabel", wraplength=850).pack(anchor="w")
         if subtitle:
-            ttk.Label(left, text=subtitle, style="Subtitle.TLabel").pack(anchor="w", pady=(5, 0))
+            ttk.Label(left, text=subtitle, style="Subtitle.TLabel", wraplength=850).pack(anchor="w", pady=(5, 0))
         if with_navigation and self.user:
             nav = ttk.Frame(header, style="Panel.TFrame")
-            nav.pack(side="right", anchor="n")
+            nav.pack(fill="x", pady=(8, 0))
             ttk.Button(nav, text="Каталог", style="Nav.TButton", command=self.show_catalog).pack(side="left", padx=3)
             ttk.Button(nav, text="Мои результаты", style="Nav.TButton", command=self.show_history).pack(side="left", padx=3)
             if self.user.role_code in ("ADMIN", "AUTHOR"):
                 ttk.Button(nav, text="Студия тестов", style="Nav.TButton", command=self.show_admin).pack(side="left", padx=3)
             ttk.Button(nav, text="Выйти", style="Quiet.TButton", command=self.logout).pack(side="left", padx=(12, 0))
+            flow_row(nav)
 
     def add_chip_row(self, parent, chips, wrap=False):
         row = tk.Frame(parent, bg=COLORS["panel"])
@@ -255,7 +273,7 @@ class QuizApplication(tk.Tk):
         messagebox.showerror("Операция не выполнена", message)
 
     def show_connection(self):
-        self.clear_page()
+        self.clear_page(scrollable=True)
         self.heading(
             "Шаг 1. Подключение Oracle",
             "Укажите технические данные схемы. После подключения откроется обычный экран входа пользователей.",
@@ -263,7 +281,7 @@ class QuizApplication(tk.Tk):
         )
         settings = load_settings()
         outer, form = self.panel(self.page, padding=28)
-        outer.pack(fill="x", padx=(140, 140), pady=(28, 0))
+        outer.pack(fill="x", padx=24, pady=(28, 0))
         ttk.Label(form, text="Подключение к базе", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 18))
         ttk.Label(form, text="DSN (host:port/service)", style="Card.TLabel").grid(row=1, column=0, sticky="w", pady=6)
         dsn = ttk.Entry(form, width=48)
@@ -303,7 +321,7 @@ class QuizApplication(tk.Tk):
         self.show_login_page()
 
     def auth_panel(self, title, subtitle):
-        self.clear_page()
+        self.clear_page(scrollable=True)
         connection_note = self.connected_dsn or load_settings().dsn
         self.heading(
             title,
@@ -311,7 +329,7 @@ class QuizApplication(tk.Tk):
             with_navigation=False,
         )
         outer, form = self.panel(self.page, padding=28)
-        outer.pack(fill="x", padx=(250, 250), pady=(20, 0))
+        outer.pack(fill="x", padx=40, pady=(20, 0))
         return form
 
     def show_login_page(self, prefill_login=""):
@@ -347,6 +365,7 @@ class QuizApplication(tk.Tk):
         ttk.Button(actions, text="Зарегистрироваться", style="Quiet.TButton", command=self.show_register_page).pack(side="left")
         ttk.Button(actions, text="Изменить подключение Oracle", style="Quiet.TButton", command=self.show_connection).pack(side="right")
         login_value.focus_set()
+        flow_row(actions)
         self.set_enter_action(authenticate)
 
     def show_register_page(self):
@@ -384,6 +403,7 @@ class QuizApplication(tk.Tk):
         ttk.Button(actions, text="У меня уже есть аккаунт", style="Quiet.TButton", command=self.show_login_page).pack(side="left")
         ttk.Button(actions, text="Изменить подключение Oracle", style="Quiet.TButton", command=self.show_connection).pack(side="right")
         full_name.focus_set()
+        flow_row(actions)
         self.set_enter_action(register_user)
 
     def abandon_active_attempt(self):
@@ -426,7 +446,7 @@ class QuizApplication(tk.Tk):
 
         outer, content = self.panel(body, padding=SPACING["md"])
         columns = ("topic", "quiz", "questions", "duration", "points", "author")
-        tree = ttk.Treeview(content, columns=columns, show="headings", selectmode="browse", height=5)
+        tree = ScrollTable(content, columns=columns, show="headings", selectmode="browse", height=5)
         headers = {
             "topic": ("Тематика", 210),
             "quiz": ("Тест", 300),
@@ -438,9 +458,6 @@ class QuizApplication(tk.Tk):
         for name, (title, width) in headers.items():
             tree.heading(name, text=title)
             tree.column(name, width=width, anchor="w" if name in ("topic", "quiz", "author") else "center")
-        table_scroll = ttk.Scrollbar(content, orient="vertical", command=tree.yview)
-        table_scroll.pack(side="right", fill="y")
-        tree.configure(yscrollcommand=table_scroll.set)
         tree.pack(side="left", fill="both", expand=True)
         rows_by_id = {}
 
@@ -616,7 +633,7 @@ class QuizApplication(tk.Tk):
         return True
 
     def show_question(self):
-        self.clear_page()
+        self.clear_page(scrollable=True)
         if self.active_index >= len(self.active_questions):
             self.finish_active_attempt()
             return
@@ -725,6 +742,7 @@ class QuizApplication(tk.Tk):
                     caption = tk.Label(
                         row,
                         text=option["option_text"],
+                        wraplength=640,
                         bg=row_bg,
                         fg=COLORS["ink"],
                         font=("Segoe UI", 10),
@@ -891,6 +909,7 @@ class QuizApplication(tk.Tk):
                         caption = tk.Label(
                             row_frame,
                             text=row["option_text"],
+                            wraplength=640,
                             bg=row_bg,
                             fg=COLORS["ink"],
                             font=("Segoe UI", 10),
@@ -898,6 +917,7 @@ class QuizApplication(tk.Tk):
                             justify="left",
                         )
                         caption.pack(side="left", fill="x", expand=True)
+                        caption.bind("<Configure>", lambda event: event.widget.configure(wraplength=max(40, event.width)))
 
                         def build_hover_handlers(
                             row_widget=row_frame,
@@ -1013,7 +1033,7 @@ class QuizApplication(tk.Tk):
                 )
                 text_entry.pack(fill="x", padx=SPACING["xs"], pady=SPACING["xs"])
             else:
-                text_entry = ttk.Entry(input_shell, width=75)
+                text_entry = ttk.Entry(input_shell, width=32)
                 text_entry.pack(fill="x", padx=SPACING["xs"], pady=SPACING["xs"])
 
         actions = ttk.Frame(card, style="Panel.TFrame")
@@ -1060,6 +1080,7 @@ class QuizApplication(tk.Tk):
         next_text = "Завершить и показать результат" if self.active_index + 1 == total else "Сохранить ответ и дальше"
         ttk.Button(actions, text=next_text, style="Primary.TButton", command=submit_and_continue).pack(side="right")
         ttk.Button(actions, text="Завершить тест", style="Quiet.TButton", command=finish_by_user).pack(side="right", padx=(0, SPACING["xs"]))
+        flow_row(actions)
         if text_entry is not None:
             text_entry.focus_set()
         self.set_enter_action(submit_and_continue)
@@ -1128,7 +1149,7 @@ class QuizApplication(tk.Tk):
         self.show_result(attempt_id)
 
     def show_result(self, attempt_id):
-        self.clear_page()
+        self.clear_page(scrollable=True)
         try:
             result = self.gateway.attempt_result(attempt_id)
             header = self.gateway.attempt_header(attempt_id)
@@ -1173,7 +1194,7 @@ class QuizApplication(tk.Tk):
         outer.pack(fill="both", expand=True)
         show_feedback = int(header["show_feedback"]) == 1
         columns = ("number", "status", "question", "given", "correct", "explanation")
-        tree = ttk.Treeview(body, columns=columns, show="headings")
+        tree = ScrollTable(body, columns=columns, show="headings")
         for name, title, width in (
             ("number", "#", 45),
             ("status", "Результат", 100),
@@ -1250,12 +1271,12 @@ class QuizApplication(tk.Tk):
         ).pack(anchor="w", pady=(8, 0))
 
     def show_history(self):
-        self.clear_page()
+        self.clear_page(scrollable=True)
         self.heading("История попыток", "Результаты рассчитываются и хранятся в Oracle.")
         outer, content = self.panel(self.page, padding=15)
         outer.pack(fill="both", expand=True)
         columns = ("topic", "quiz", "date", "status", "score", "correct")
-        tree = ttk.Treeview(content, columns=columns, show="headings", selectmode="browse")
+        tree = ScrollTable(content, columns=columns, show="headings", selectmode="browse")
         for name, title, width in (
             ("topic", "Тематика", 210), ("quiz", "Тест", 310), ("date", "Начало", 175),
             ("status", "Статус", 110), ("score", "%", 75), ("correct", "Верно", 95),
@@ -1278,6 +1299,11 @@ class QuizApplication(tk.Tk):
         role_name = ROLE_NAMES.get(self.user.role_code, self.user.role_code)
         self.heading("Студия тестов", f"{role_name}: материалы, вопросы, публикация и результаты в одном рабочем пространстве.")
         notebook = ttk.Notebook(self.page)
+        section_row = ttk.Frame(self.page, style="App.TFrame")
+        section_row.pack(fill="x", pady=(0, 8))
+        ttk.Label(section_row, text="Раздел студии").pack(side="left", padx=(0, 12))
+        section = ttk.Combobox(section_row, state="readonly", width=28)
+        section.pack(side="left", fill="x", expand=True)
         notebook.pack(fill="both", expand=True)
         self.build_admin_dictionaries(notebook)
         self.build_admin_quiz_editor(notebook)
@@ -1288,6 +1314,11 @@ class QuizApplication(tk.Tk):
         if self.user.role_code == "ADMIN":
             self.build_admin_progress(notebook)
             self.build_admin_users(notebook)
+        titles = [notebook.tab(tab_id, "text") for tab_id in notebook.tabs()]
+        section.configure(values=titles)
+        section.current(0)
+        section.bind("<<ComboboxSelected>>", lambda _event: notebook.select(section.current()))
+        notebook.bind("<<NotebookTabChanged>>", lambda _event: section.set(notebook.tab(notebook.select(), "text")), add="+")
         if selected_tab:
             for tab_id in notebook.tabs():
                 if notebook.tab(tab_id, "text") == selected_tab:
@@ -1295,8 +1326,7 @@ class QuizApplication(tk.Tk):
                     break
 
     def build_admin_dictionaries(self, notebook):
-        tab = ttk.Frame(notebook, style="App.TFrame", padding=16)
-        notebook.add(tab, text="Материалы")
+        tab = self.admin_tab(notebook, "Материалы")
         topic_outer, topic = self.panel(tab, padding=18)
         topic_outer.pack(side="left", fill="both", expand=True, padx=(0, 8))
         category_outer, category = self.panel(tab, padding=18)
@@ -1307,11 +1337,11 @@ class QuizApplication(tk.Tk):
         topic_title = ttk.Entry(topic)
         topic_title.pack(fill="x", pady=(3, 9))
         ttk.Label(topic, text="Описание", style="Muted.TLabel").pack(anchor="w")
-        topic_description = tk.Text(topic, height=3, bg="#ffffff", relief="solid", bd=1, font=("Segoe UI", 10))
+        topic_description = tk.Text(topic, height=3, width=32, bg="#ffffff", relief="solid", bd=1, font=("Segoe UI", 10))
         topic_description.pack(fill="x", pady=(3, 12))
         topic_actions = ttk.Frame(topic, style="Panel.TFrame")
         topic_actions.pack(fill="x", pady=(0, 14))
-        topic_tree = ttk.Treeview(topic, columns=("title", "categories", "tests"), show="headings", height=6)
+        topic_tree = ScrollTable(topic, columns=("title", "categories", "tests"), show="headings", height=6)
         for name, title_text, width in (("title", "Тематика", 235), ("categories", "Категорий", 85), ("tests", "Тестов", 70)):
             topic_tree.heading(name, text=title_text)
             topic_tree.column(name, width=width)
@@ -1327,7 +1357,7 @@ class QuizApplication(tk.Tk):
         category_title.pack(fill="x", pady=(3, 12))
         category_actions = ttk.Frame(category, style="Panel.TFrame")
         category_actions.pack(fill="x", pady=(0, 14))
-        category_tree = ttk.Treeview(category, columns=("title", "questions"), show="headings", height=8)
+        category_tree = ScrollTable(category, columns=("title", "questions"), show="headings", height=8)
         category_tree.heading("title", text="Категория")
         category_tree.column("title", width=295)
         category_tree.heading("questions", text="Вопросов")
@@ -1424,15 +1454,17 @@ class QuizApplication(tk.Tk):
         if self.user.role_code == "ADMIN":
             ttk.Button(topic_actions, text="Удалить выбранную", style="Danger.TButton", command=delete_topic).pack(side="left", padx=(8, 0))
             ttk.Button(category_actions, text="Удалить выбранную", style="Danger.TButton", command=delete_category).pack(side="left", padx=(8, 0))
+        flow_row(topic_actions)
+        flow_row(category_actions)
         topic_combo.bind("<<ComboboxSelected>>", refresh_categories)
         topic_tree.bind("<<TreeviewSelect>>", select_topic)
         refresh_topics()
+        responsive_columns(tab, (topic_outer, category_outer))
 
     def build_admin_quiz_editor(self, notebook):
-        tab = ttk.Frame(notebook, style="App.TFrame", padding=16)
-        notebook.add(tab, text="Новый тест")
+        tab = self.admin_tab(notebook, "Новый тест")
         intro_outer, intro = self.panel(tab, padding=16)
-        intro_outer.pack(fill="x", padx=(80, 80), pady=(0, 12))
+        intro_outer.pack(fill="x", padx=12, pady=(0, 12))
         ttk.Label(intro, text="Шаг 1 из 2: создайте параметры теста", style="CardTitle.TLabel").pack(anchor="w")
         ttk.Label(
             intro,
@@ -1443,7 +1475,7 @@ class QuizApplication(tk.Tk):
         ).pack(anchor="w", pady=(4, 0))
 
         outer, form = self.panel(tab, padding=22)
-        outer.pack(fill="x", padx=(80, 80), pady=(0, 0))
+        outer.pack(fill="x", padx=12, pady=(0, 0))
         topics = self.gateway.admin_topics()
         topic_values = [f"{row['topic_id']} | {row['title']}" for row in topics]
         ttk.Label(form, text="Тематика", style="Card.TLabel").grid(row=0, column=0, sticky="w", pady=7)
@@ -1455,7 +1487,7 @@ class QuizApplication(tk.Tk):
         quiz_title = ttk.Entry(form)
         quiz_title.grid(row=1, column=1, sticky="ew", padx=(20, 0), pady=7)
         ttk.Label(form, text="Краткое описание", style="Card.TLabel").grid(row=2, column=0, sticky="nw", pady=7)
-        quiz_description = tk.Text(form, height=3, bg="#ffffff", relief="solid", bd=1, font=("Segoe UI", 10))
+        quiz_description = tk.Text(form, height=3, width=32, bg="#ffffff", relief="solid", bd=1, font=("Segoe UI", 10))
         quiz_description.grid(row=2, column=1, sticky="ew", padx=(20, 0), pady=7)
 
         ttk.Label(form, text="Режим лимита времени", style="Card.TLabel").grid(row=3, column=0, sticky="w", pady=7)
@@ -1496,6 +1528,8 @@ class QuizApplication(tk.Tk):
             else:
                 duration_hint.configure(text="минут на весь тест")
 
+        flow_row(duration_row)
+        flow_row(attempt_limit_row)
         timer_mode.bind("<<ComboboxSelected>>", sync_timer_hint)
         sync_timer_hint()
 
@@ -1544,8 +1578,7 @@ class QuizApplication(tk.Tk):
         )
 
     def build_admin_question_editor(self, notebook):
-        tab = ttk.Frame(notebook, style="App.TFrame", padding=16)
-        notebook.add(tab, text="Вопросы")
+        tab = self.admin_tab(notebook, "Вопросы")
         form_outer, form = self.panel(tab, padding=16)
         form_outer.pack(side="left", fill="both", expand=True, padx=(0, 7))
         list_outer, listing = self.panel(tab, padding=16)
@@ -1617,7 +1650,7 @@ class QuizApplication(tk.Tk):
         option_field = ttk.Frame(answer_area, style="Panel.TFrame")
         options_label = ttk.Label(option_field, text="Варианты: один вариант в каждой строке", style="Muted.TLabel")
         options_label.pack(anchor="w")
-        options = tk.Text(option_field, height=3, bg="#ffffff", relief="solid", bd=1, font=("Segoe UI", 9))
+        options = tk.Text(option_field, height=3, width=32, bg="#ffffff", relief="solid", bd=1, font=("Segoe UI", 9))
         options.pack(fill="x", pady=(3, 5))
         correct_field = ttk.Frame(option_field, style="Panel.TFrame")
         ttk.Label(correct_field, text="Номера правильных вариантов (например, 1 или 1,3)", style="Muted.TLabel").pack(anchor="w")
@@ -1630,7 +1663,7 @@ class QuizApplication(tk.Tk):
         boolean_answer.pack(fill="x", pady=(3, 0))
 
         ttk.Label(listing, text="Вопросы выбранного черновика", style="CardTitle.TLabel").pack(anchor="w", pady=(0, 9))
-        question_tree = ttk.Treeview(listing, columns=("number", "text", "type", "points"), show="headings")
+        question_tree = ScrollTable(listing, columns=("number", "text", "type", "points"), show="headings")
         for name, title, width in (("number", "#", 38), ("text", "Вопрос", 260), ("type", "Тип", 120), ("points", "Баллы", 60)):
             question_tree.heading(name, text=title)
             question_tree.column(name, width=width)
@@ -1673,6 +1706,7 @@ class QuizApplication(tk.Tk):
             editor_title.configure(text="Новый вопрос")
             editor_note.configure(text="Заполните поля и добавьте вопрос в выбранный черновик.")
             save_button.configure(text="Добавить вопрос")
+            reflow_question_actions()
             q_text.delete(0, "end")
             expected.delete(0, "end")
             explanation.delete(0, "end")
@@ -1727,6 +1761,7 @@ class QuizApplication(tk.Tk):
             editor_title.configure(text="Редактирование вопроса")
             editor_note.configure(text="Изменения применяются к выбранному вопросу черновика.")
             save_button.configure(text="Сохранить изменения")
+            reflow_question_actions()
             set_combobox_value(q_category, list(q_category["values"]), question["category_id"])
             set_combobox_value(q_type, type_values, question["type_code"])
             set_combobox_value(q_diff, diff_values, question["difficulty_code"])
@@ -1820,15 +1855,16 @@ class QuizApplication(tk.Tk):
         save_button.pack(side="left")
         ttk.Button(form_actions, text="Очистить форму", style="Quiet.TButton", command=clear_fields).pack(side="left", padx=(8, 0))
         ttk.Button(listing, text="Удалить выбранный вопрос", style="Danger.TButton", command=delete_question).pack(anchor="e", pady=(10, 0))
+        reflow_question_actions = flow_row(form_actions)
         q_quiz.bind("<<ComboboxSelected>>", refresh_question_context)
         q_type.bind("<<ComboboxSelected>>", update_answer_fields)
         question_tree.bind("<<TreeviewSelect>>", load_question)
         update_answer_fields()
         refresh_question_context()
+        responsive_columns(tab, (form_outer, list_outer))
 
     def build_admin_selection(self, notebook):
-        tab = ttk.Frame(notebook, style="App.TFrame", padding=16)
-        notebook.add(tab, text="Подбор")
+        tab = self.admin_tab(notebook, "Подбор")
         outer, panel = self.panel(tab, padding=18)
         outer.pack(fill="both", expand=True)
         ttk.Label(panel, text="Подбор вопросов для попытки", style="CardTitle.TLabel").pack(anchor="w")
@@ -1920,7 +1956,7 @@ class QuizApplication(tk.Tk):
             update_controls()
 
         def refresh(_event=None):
-            if _event is not None and notebook.select() != str(tab):
+            if _event is not None and notebook.select() != str(tab.master.master):
                 return
             current = quiz_combo.get()
             rows_by_label.clear()
@@ -1953,6 +1989,8 @@ class QuizApplication(tk.Tk):
         save_button = ttk.Button(actions, text="Сохранить подбор", style="Primary.TButton", command=save)
         save_button.pack(side="left")
         ttk.Button(actions, text="Обновить данные", style="Quiet.TButton", command=refresh).pack(side="left", padx=10)
+        flow_row(modes)
+        flow_row(actions)
         all_radio.configure(command=update_controls)
         filtered_radio.configure(command=update_controls)
         quiz_combo.bind("<<ComboboxSelected>>", load_selected)
@@ -1962,13 +2000,12 @@ class QuizApplication(tk.Tk):
         refresh()
 
     def build_admin_publication(self, notebook):
-        tab = ttk.Frame(notebook, style="App.TFrame", padding=16)
-        notebook.add(tab, text="Публикация")
+        tab = self.admin_tab(notebook, "Публикация")
         outer, content = self.panel(tab, padding=15)
         outer.pack(fill="both", expand=True)
         ttk.Label(content, text="Управление тестами", style="CardTitle.TLabel").pack(anchor="w")
         ttk.Label(content, text="Публикуйте готовые черновики и выдавайте доступ к закрытым тестам.", style="Muted.TLabel").pack(anchor="w", pady=(3, 12))
-        tree = ttk.Treeview(content, columns=("topic", "title", "access", "status"), show="headings", height=9)
+        tree = ScrollTable(content, columns=("topic", "title", "access", "status"), show="headings", height=9)
         for name, title, width in (("topic", "Тематика", 250), ("title", "Тест", 390), ("access", "Доступ", 130), ("status", "Статус", 130)):
             tree.heading(name, text=title)
             tree.column(name, width=width)
@@ -2188,15 +2225,18 @@ class QuizApplication(tk.Tk):
         if self.user.role_code in ("ADMIN", "AUTHOR"):
             ttk.Button(state_actions, text="Скрыть в черновик", style="Quiet.TButton", command=archive_quiz).pack(side="left", padx=(9, 0))
             ttk.Button(state_actions, text="Удалить тест", style="Danger.TButton", command=delete_quiz).pack(side="left", padx=(9, 0))
+        flow_row(state_actions)
+        flow_row(access_row)
+        attempts_row.pack_configure(fill="x")
+        flow_row(attempts_row)
         tree.bind("<<TreeviewSelect>>", refresh_feedback_controls)
         refresh_feedback_controls()
 
     def build_admin_statistics(self, notebook):
-        tab = ttk.Frame(notebook, style="App.TFrame", padding=16)
-        notebook.add(tab, text="Аналитика")
+        tab = self.admin_tab(notebook, "Аналитика")
         quiz_outer, quiz_panel = self.panel(tab, padding=12)
         quiz_outer.pack(fill="x", pady=(0, 12))
-        quiz_tree = ttk.Treeview(quiz_panel, columns=("topic", "quiz", "attempts", "average"), show="headings", height=5)
+        quiz_tree = ScrollTable(quiz_panel, columns=("topic", "quiz", "attempts", "average"), show="headings", height=5)
         for name, title, width in (("topic", "Тематика", 270), ("quiz", "Тест", 410), ("attempts", "Попыток", 110), ("average", "Средний %", 120)):
             quiz_tree.heading(name, text=title)
             quiz_tree.column(name, width=width)
@@ -2206,7 +2246,7 @@ class QuizApplication(tk.Tk):
             quiz_tree.insert("", "end", iid=str(row["quiz_id"]), values=(row["topic_title"], row["quiz_title"], row["attempts_count"], row["average_score"] or "-"))
         details_outer, details = self.panel(tab, padding=12)
         details_outer.pack(fill="both", expand=True)
-        question_tree = ttk.Treeview(details, columns=("question", "answers", "percent"), show="headings")
+        question_tree = ScrollTable(details, columns=("question", "answers", "percent"), show="headings")
         for name, title, width in (("question", "Вопрос", 700), ("answers", "Ответов", 110), ("percent", "Верно, %", 120)):
             question_tree.heading(name, text=title)
             question_tree.column(name, width=width)
@@ -2223,8 +2263,7 @@ class QuizApplication(tk.Tk):
         quiz_tree.bind("<<TreeviewSelect>>", show_question_stats)
 
     def build_admin_progress(self, notebook):
-        tab = ttk.Frame(notebook, style="App.TFrame", padding=16)
-        notebook.add(tab, text="Прогресс")
+        tab = self.admin_tab(notebook, "Прогресс")
         users_outer, users_panel = self.panel(tab, padding=16)
         users_outer.pack(side="left", fill="both", expand=True, padx=(0, 7))
         quizzes_outer, quizzes_panel = self.panel(tab, padding=16)
@@ -2232,7 +2271,7 @@ class QuizApplication(tk.Tk):
 
         ttk.Label(users_panel, text="Прогресс пользователей", style="CardTitle.TLabel").pack(anchor="w")
         ttk.Label(users_panel, text="Выберите аккаунт для просмотра его попыток.", style="Muted.TLabel").pack(anchor="w", pady=(3, 12))
-        users_tree = ttk.Treeview(users_panel, columns=("name", "login", "attempts"), show="headings")
+        users_tree = ScrollTable(users_panel, columns=("name", "login", "attempts"), show="headings")
         for name, title, width in (("name", "Пользователь", 220), ("login", "Логин", 125), ("attempts", "Попыток", 70)):
             users_tree.heading(name, text=title)
             users_tree.column(name, width=width)
@@ -2245,7 +2284,7 @@ class QuizApplication(tk.Tk):
             style="Muted.TLabel",
             wraplength=470,
         ).pack(anchor="w", pady=(3, 12))
-        quiz_tree = ttk.Treeview(quizzes_panel, columns=("topic", "quiz", "attempts"), show="headings")
+        quiz_tree = ScrollTable(quizzes_panel, columns=("topic", "quiz", "attempts"), show="headings")
         for name, title, width in (("topic", "Тематика", 155), ("quiz", "Тест", 220), ("attempts", "Попыток", 70)):
             quiz_tree.heading(name, text=title)
             quiz_tree.column(name, width=width)
@@ -2317,10 +2356,12 @@ class QuizApplication(tk.Tk):
         buttons.pack(fill="x", pady=(12, 0))
         ttk.Button(buttons, text="Сбросить выбранный тест", style="Danger.TButton", command=reset_quiz_attempts).pack(side="left")
         ttk.Button(buttons, text="Обнулить весь прогресс", style="Danger.TButton", command=reset_all_attempts).pack(side="right")
+        flow_row(buttons)
         users_tree.bind("<<TreeviewSelect>>", show_attempts)
         if users_tree.get_children():
             users_tree.selection_set(users_tree.get_children()[0])
             show_attempts()
+        responsive_columns(tab, (users_outer, quizzes_outer))
 
     def show_user_form(self, title, fields, confirm_text, submit, success_message, refresh=False):
         dialog = tk.Toplevel(self)
@@ -2369,8 +2410,7 @@ class QuizApplication(tk.Tk):
         entries[0].focus_set()
 
     def build_admin_users(self, notebook):
-        tab = ttk.Frame(notebook, style="App.TFrame", padding=10)
-        notebook.add(tab, text="Команда")
+        tab = self.admin_tab(notebook, "Команда")
         actions_outer, actions = self.panel(tab, padding=8)
         actions_outer.pack(side="bottom", fill="x", pady=(8, 0))
         action_buttons = ttk.Frame(actions, style="Panel.TFrame")

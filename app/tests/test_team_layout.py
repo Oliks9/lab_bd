@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 from quiz_client import ui
 from quiz_client.config import ConnectionSettings
 from quiz_client.database import SessionUser
+from quiz_client.layout import reveal_widget
 
 
 class TeamLayoutTest(unittest.TestCase):
@@ -96,6 +97,8 @@ class TeamLayoutTest(unittest.TestCase):
                     self.pump()
                     buttons = [self.button(text) for text in (*self.actions, "Добавить автора")]
                     for button in buttons:
+                        reveal_widget(button)
+                        self.pump()
                         self.assert_unclipped(button)
                     for first, second in combinations(buttons, 2):
                         self.assertTrue(
@@ -104,6 +107,8 @@ class TeamLayoutTest(unittest.TestCase):
                             or first.winfo_rooty() + first.winfo_height() <= second.winfo_rooty()
                             or second.winfo_rooty() + second.winfo_height() <= first.winfo_rooty()
                         )
+                    reveal_widget(self.tree)
+                    self.pump()
                     bounds = self.tree.bbox("1")
                     self.assertTrue(bounds, "At least one user row must remain visible")
                     self.assertLessEqual(bounds[1] + bounds[3], self.tree.winfo_height())

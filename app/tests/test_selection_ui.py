@@ -6,6 +6,7 @@ from unittest.mock import patch
 from quiz_client import ui
 from quiz_client.config import ConnectionSettings
 from quiz_client.database import SessionUser
+from quiz_client.layout import reveal_widget
 
 
 class SelectionGateway:
@@ -108,6 +109,8 @@ class SelectionUITest(unittest.TestCase):
     def test_controls_fit_minimum_window(self):
         for w in self.widgets():
             if isinstance(w, (ttk.Button, ttk.Entry, ttk.Combobox, ttk.Radiobutton, ttk.Label)):
+                reveal_widget(w)
+                self.pump()
                 self.assertTrue(w.winfo_ismapped(), str(w))
                 self.assertLessEqual(w.winfo_rooty() + w.winfo_height(), self.app.winfo_rooty() + 700)
                 self.assertLessEqual(w.winfo_rootx() + w.winfo_width(), self.app.winfo_rootx() + 1060)
