@@ -5,7 +5,7 @@ PROMPT === Creating application schema in FREEPDB1 ===
 ALTER SESSION SET CONTAINER = FREEPDB1;
 
 CREATE USER quiz_app IDENTIFIED BY "P@ssw0rd";
-GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE PROCEDURE, CREATE TRIGGER, CREATE SEQUENCE TO quiz_app;
+GRANT CREATE SESSION, CREATE TABLE, CREATE PROCEDURE, CREATE TRIGGER, CREATE SEQUENCE TO quiz_app;
 ALTER USER quiz_app QUOTA UNLIMITED ON USERS;
 
 PROMPT === Installing quiz application objects as QUIZ_APP ===
@@ -25,5 +25,6 @@ PROMPT === Running database smoke test ===
 @/opt/quiz-project/sql/tests/server_logic_smoke_test.sql
 @/opt/quiz-project/sql/tests/comparison_smoke_test.sql
 @/opt/quiz-project/sql/tests/question_selection_smoke_test.sql
+@/opt/quiz-project/sql/tests/reports_smoke_test.sql
 
 EXIT

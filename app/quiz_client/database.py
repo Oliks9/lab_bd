@@ -47,6 +47,12 @@ class OracleGateway:
             columns = [column[0].lower() for column in cursor.description]
             return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
+    def _report_rows(self, name: str, params=()):
+        with self.connection.cursor() as cursor, self.connection.cursor() as result:
+            cursor.callproc(f"pkg_reports.{name}", [*params, result])
+            columns = [column[0].lower() for column in result.description]
+            return [dict(zip(columns, row)) for row in result.fetchall()]
+
     def authenticate(self, login: str, password: str) -> SessionUser:
         with self.connection.cursor() as cursor:
             user_id = cursor.var(int)
@@ -68,18 +74,7 @@ class OracleGateway:
         return self._rows("SELECT topic_id, title FROM topics ORDER BY title")
 
     def catalog(self, user_id: int, topic_id=None):
-        return self._rows(
-            """
-            SELECT quiz_id, topic_title, quiz_title, description, timer_mode, duration_minutes,
-                   question_count, max_points, author_name, access_mode, status, attempt_limit,
-                   selection_category_id, selection_category_title, selection_difficulty_name, pool_count
-              FROM v_quiz_catalog
-             WHERE fn_can_access_quiz(:user_id, quiz_id) = 1
-               AND (:topic_id IS NULL OR topic_id = :topic_id)
-             ORDER BY topic_title, quiz_title
-            """,
-            {"user_id": user_id, "topic_id": topic_id},
-        )
+        return self._report_rows("catalog", [user_id, topic_id])
 
     def start_attempt(self, user_id: int, quiz_id: int) -> int:
         try:
@@ -176,34 +171,13 @@ class OracleGateway:
         self.connection.commit()
 
     def attempt_result(self, attempt_id: int):
-        return self._rows(
-            """
-            SELECT h.*, c.peer_average_percent, c.difference_pp,
-                   c.peer_attempt_count, c.peer_user_count, c.comparison_code
-              FROM v_attempt_history h
-              JOIN v_attempt_comparison c ON c.attempt_id = h.attempt_id
-             WHERE h.attempt_id = :id
-            """,
-            {"id": attempt_id},
-        )[0]
+        return self._report_rows("attempt_result", [attempt_id])[0]
 
     def attempt_details(self, attempt_id: int):
-        return self._rows(
-            "SELECT * FROM v_attempt_details WHERE attempt_id = :id ORDER BY display_order",
-            {"id": attempt_id},
-        )
+        return self._report_rows("attempt_details", [attempt_id])
 
     def history(self, user_id: int):
-        return self._rows(
-            """
-            SELECT attempt_id, topic_title, quiz_title, started_at, status,
-                   score_percent, correct_count, question_count
-              FROM v_attempt_history
-             WHERE user_id = :id
-             ORDER BY started_at DESC
-            """,
-            {"id": user_id},
-        )
+        return self._report_rows("history", [user_id])
 
     def admin_topics(self):
         return self._rows(
@@ -479,43 +453,10 @@ class OracleGateway:
         return int(user_id.getvalue())
 
     def quiz_statistics(self, actor: SessionUser):
-        return self._rows(
-            """
-            SELECT c.topic_title, c.quiz_title, c.quiz_id,
-                   COUNT(h.attempt_id) AS attempts_count,
-                   ROUND(AVG(h.score_percent), 2) AS average_score
-              FROM v_quiz_catalog c
-              JOIN quizzes q ON q.quiz_id = c.quiz_id
-              LEFT JOIN v_attempt_history h
-                ON h.quiz_id = c.quiz_id
-               AND h.status IN ('FINISHED', 'EXPIRED')
-             WHERE EXISTS (
-                 SELECT 1 FROM app_users u WHERE u.user_id = :actor_id
-                   AND u.is_active = 1 AND u.role_code IN ('ADMIN', 'AUTHOR')
-                   AND (u.role_code = 'ADMIN' OR q.author_id = u.user_id)
-             )
-             GROUP BY c.topic_title, c.quiz_title, c.quiz_id
-             ORDER BY c.topic_title, c.quiz_title
-            """,
-            {"actor_id": actor.user_id},
-        )
+        return self._report_rows("quiz_statistics", [actor.user_id])
 
     def question_statistics(self, quiz_id: int):
-        return self._rows(
-            """
-            SELECT question_text, answer_count, correct_percent
-              FROM v_question_statistics
-             WHERE quiz_id = :quiz_id
-             ORDER BY question_id
-            """,
-            {"quiz_id": quiz_id},
-        )
+        return self._report_rows("question_statistics", [quiz_id])
 
     def leaderboard(self):
-        return self._rows(
-            """
-            SELECT full_name, attempts_finished, average_score, best_score
-              FROM v_leaderboard
-             ORDER BY average_score DESC NULLS LAST, best_score DESC NULLS LAST
-            """
-        )
+        return self._report_rows("leaderboard")

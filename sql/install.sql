@@ -31,8 +31,10 @@ PROMPT === Creating business packages ===
 @@05_packages/pkg_admin.pks
 @@05_packages/pkg_admin.pkb
 
-PROMPT === Creating report views ===
-@@06_views/01_views.sql
+PROMPT === Creating reporting package without views ===
+@@05_packages/pkg_reports.pks
+@@05_packages/pkg_reports.pkb
+@@tests/check_invalid_objects.sql
 
 PROMPT === Loading dictionaries, three accounts, three quizzes and saved demo sessions ===
 @@07_seed/01_reference_data.sql

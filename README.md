@@ -6,6 +6,7 @@
 
 - Oracle отвечает за бизнес-логику: права, валидацию, таймеры, оценивание, публикацию, удаление, ограничения целостности.
 - Python отображает формы, проверяет ввод и вызывает API Oracle. Оценивание, ограничения и изменения данных выполняются в БД; SQL-запросы из `database.py` тоже исполняются сервером Oracle.
+- Представления не используются: семь процедур `pkg_reports` возвращают отчёты через `SYS_REFCURSOR`. Право `CREATE VIEW` не требуется.
 
 ## Основные возможности
 
@@ -108,12 +109,12 @@ oracle_quiz_app/
   sql/
     00_uninstall.sql
     install.sql
+    upgrade_no_views.sql
     01_tables/
     02_functions/
     03_procedures/
     04_triggers/
     05_packages/
-    06_views/
     07_seed/
     08_migrations/
     tests/
@@ -175,14 +176,21 @@ powershell -ExecutionPolicy Bypass -File .\docker\upgrade.ps1
 
 Закройте клиент перед обновлением и сделайте резервную копию схемы.
 В Docker выполните `powershell -ExecutionPolicy Bypass -File .\docker\upgrade.ps1`.
-На учебном сервере откройте **файл** `sql/upgrade_question_selection.sql` в SQL Developer,
+На учебном сервере откройте **файл** `sql/upgrade_no_views.sql` в SQL Developer,
 выберите подключение своего пользователя БД и запустите F5. Папка `sql` должна быть перенесена целиком:
 скрипт использует относительные `@@`-подключения. Он рассчитан на актуальную установленную версию проекта
-(с режимами таймера и лимитом попыток), добавляет поля подбора, пересоздаёт пакеты и все представления,
-включая сравнение результатов. SYS и создание пользователя не нужны.
+(с режимами таймера и лимитом попыток), добавляет недостающие поля подбора и пересоздаёт пакеты,
+включая `pkg_reports`. SYS, создание пользователя и `CREATE VIEW` не нужны.
 Затем запустите `sql/tests/question_selection_smoke_test.sql` и `sql/tests/comparison_smoke_test.sql`
 через F5 и замените EXE. Пароли, тесты и результаты не сбрасываются.
 `sql/install.sql` повторно не запускайте: это установка с удалением данных приложения.
+
+Новый EXE требует `pkg_reports`: сначала обновите базу, затем замените клиент.
+Для новой схемы по-прежнему используется `sql/install.sql`. Достаточны права
+`CREATE SESSION`, `CREATE TABLE`, `CREATE SEQUENCE`, `CREATE PROCEDURE`, `CREATE TRIGGER`
+и квота на табличное пространство. Проверено с квотой 300 МБ.
+Подробные шаги SQL Developer и проверочные запросы:
+[Развёртывание без CREATE VIEW](docs/10_deployment_without_views.md).
 
 ## Новые демонстрационные данные в существующей схеме
 
@@ -304,11 +312,13 @@ Get-Content -LiteralPath $report -Raw -Encoding UTF8
   - PK/FK/UNIQUE/CHECK и каскады;
   - индексы;
   - функции и процедуры;
-  - пакеты `pkg_admin`, `pkg_testing` (сигнатуры, проверки, эффекты);
-  - триггеры, представления, миграции, smoke-тесты.
+  - пакеты `pkg_admin`, `pkg_testing`, `pkg_reports` (сигнатуры, проверки, эффекты);
+  - триггеры, миграции, smoke-тесты.
 - `docs/03_validation_and_demo_scenarios.md` — сценарии проверки и демонстрации на защите.
 - `docs/04_role_matrix_and_permissions.md` — матрица прав и привязка к конкретным процедурам.
 - `docs/05_release_notes.md` — журнал изменений по версиям.
 - `docs/06_oracle_logic_audit.md` — распределение логики между Oracle и Python, исправления и границы архитектуры.
 - `docs/07_question_selection.md` — подбор N вопросов выбранного теста по категории и сложности.
 - `docs/08_build_and_dependencies.md` — сборка EXE на Windows и диагностика зависимостей без подключения к БД.
+- `docs/09_responsive_layout.md` — адаптивная разметка и прокрутка страниц.
+- `docs/10_deployment_without_views.md` — установка и обновление без права `CREATE VIEW`.

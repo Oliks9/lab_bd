@@ -24,7 +24,8 @@ PROMPT === Recompiling PL/SQL application modules without deleting data ===
 @/opt/quiz-project/sql/03_procedures/pr_login.sql
 @/opt/quiz-project/sql/05_packages/pkg_admin.pks
 @/opt/quiz-project/sql/05_packages/pkg_admin.pkb
-@/opt/quiz-project/sql/06_views/01_views.sql
+@/opt/quiz-project/sql/05_packages/pkg_reports.pks
+@/opt/quiz-project/sql/05_packages/pkg_reports.pkb
 
 @/opt/quiz-project/sql/tests/check_invalid_objects.sql
 @/opt/quiz-project/sql/tests/timezone_smoke_test.sql
@@ -35,5 +36,6 @@ PROMPT === Recompiling PL/SQL application modules without deleting data ===
 @/opt/quiz-project/sql/tests/server_logic_smoke_test.sql
 @/opt/quiz-project/sql/tests/comparison_smoke_test.sql
 @/opt/quiz-project/sql/tests/question_selection_smoke_test.sql
+@/opt/quiz-project/sql/tests/reports_smoke_test.sql
 
 EXIT

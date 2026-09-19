@@ -31,8 +31,10 @@ PROMPT === Creating business packages ===
 @/opt/quiz-project/sql/05_packages/pkg_admin.pks
 @/opt/quiz-project/sql/05_packages/pkg_admin.pkb
 
-PROMPT === Creating report views ===
-@/opt/quiz-project/sql/06_views/01_views.sql
+PROMPT === Creating reporting package without views ===
+@/opt/quiz-project/sql/05_packages/pkg_reports.pks
+@/opt/quiz-project/sql/05_packages/pkg_reports.pkb
+@/opt/quiz-project/sql/tests/check_invalid_objects.sql
 
 PROMPT === Loading dictionaries, three accounts, three quizzes and saved demo sessions ===
 @/opt/quiz-project/sql/07_seed/01_reference_data.sql

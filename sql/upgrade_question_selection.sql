@@ -10,7 +10,8 @@ PROMPT === Update the currently connected application schema; no users or data a
 @@03_procedures/pr_login.sql
 @@05_packages/pkg_admin.pks
 @@05_packages/pkg_admin.pkb
-@@06_views/01_views.sql
+@@05_packages/pkg_reports.pks
+@@05_packages/pkg_reports.pkb
 @@tests/check_invalid_objects.sql
 COMMIT;
 PROMPT === Question selection update complete ===

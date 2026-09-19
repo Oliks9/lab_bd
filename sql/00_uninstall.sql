@@ -20,6 +20,7 @@ BEGIN
     drop_if_exists('DROP VIEW v_quiz_catalog');
     drop_if_exists('DROP VIEW v_attempt_results');
 
+    drop_if_exists('DROP PACKAGE pkg_reports');
     drop_if_exists('DROP PACKAGE pkg_testing');
     drop_if_exists('DROP PACKAGE pkg_admin');
     drop_if_exists('DROP PACKAGE quiz_pkg');

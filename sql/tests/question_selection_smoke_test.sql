@@ -21,6 +21,9 @@ DECLARE
     v_ids VARCHAR2(4000);
     v_again VARCHAR2(4000);
     v_status VARCHAR2(20);
+    v_rows SYS_REFCURSOR;
+    v_catalog pkg_reports.catalog_row;
+    v_found BOOLEAN := FALSE;
 
     PROCEDURE check_ok(p_ok BOOLEAN, p_message VARCHAR2) IS
     BEGIN
@@ -84,7 +87,20 @@ BEGIN
     pkg_admin.set_quiz_selection(v_admin, v_quiz, 3, v_category, 'EASY');
     pkg_admin.publish_quiz(v_author, v_quiz);
     expect_setting_error(v_author, 2, v_category, 'EASY', -20102);
-    SELECT question_count, max_points, pool_count INTO v_count, v_max, v_value FROM v_quiz_catalog WHERE quiz_id = v_quiz;
+    pkg_reports.catalog(v_user, NULL, v_rows);
+    LOOP
+        FETCH v_rows INTO v_catalog;
+        EXIT WHEN v_rows%NOTFOUND;
+        IF v_catalog.quiz_id = v_quiz THEN
+            v_count := v_catalog.question_count;
+            v_max := v_catalog.max_points;
+            v_value := v_catalog.pool_count;
+            v_found := TRUE;
+            EXIT;
+        END IF;
+    END LOOP;
+    CLOSE v_rows;
+    check_ok(v_found, 'Selected quiz missing from catalog');
     check_ok(v_count = 3 AND v_max IS NULL AND v_value = 5, 'Catalog must report selected count and variable points');
     FOR run IN 1..8 LOOP
         pkg_testing.start_attempt(v_user, v_quiz, v_attempt);

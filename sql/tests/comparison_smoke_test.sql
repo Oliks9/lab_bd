@@ -23,9 +23,16 @@ DECLARE
 
     PROCEDURE expect(p_code VARCHAR2, p_average NUMBER, p_difference NUMBER,
                      p_attempts NUMBER, p_users NUMBER) IS
-        v_result v_attempt_comparison%ROWTYPE;
+        v_result pkg_reports.result_row;
+        v_rows SYS_REFCURSOR;
     BEGIN
-        SELECT * INTO v_result FROM v_attempt_comparison WHERE attempt_id = v_target;
+        pkg_reports.attempt_result(v_target, v_rows);
+        FETCH v_rows INTO v_result;
+        IF v_rows%NOTFOUND THEN
+            CLOSE v_rows;
+            RAISE_APPLICATION_ERROR(-20981, 'Attempt result missing.');
+        END IF;
+        CLOSE v_rows;
         IF v_result.comparison_code <> p_code
            OR NVL(v_result.peer_average_percent, -999) <> NVL(p_average, -999)
            OR NVL(v_result.difference_pp, -999) <> NVL(p_difference, -999)

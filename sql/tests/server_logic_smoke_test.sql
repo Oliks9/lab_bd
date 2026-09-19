@@ -17,6 +17,27 @@ DECLARE
     v_role VARCHAR2(20);
     v_status VARCHAR2(20);
 
+    FUNCTION feedback_count(p_require_both BOOLEAN DEFAULT FALSE) RETURN NUMBER IS
+        v_rows SYS_REFCURSOR;
+        v_detail pkg_reports.detail_row;
+        v_total NUMBER := 0;
+    BEGIN
+        pkg_reports.attempt_details(v_attempt, v_rows);
+        LOOP
+            FETCH v_rows INTO v_detail;
+            EXIT WHEN v_rows%NOTFOUND;
+            IF (p_require_both AND v_detail.correct_answer IS NOT NULL AND v_detail.explanation IS NOT NULL)
+               OR (NOT p_require_both AND (v_detail.correct_answer IS NOT NULL OR v_detail.explanation IS NOT NULL)) THEN
+                v_total := v_total + 1;
+            END IF;
+        END LOOP;
+        CLOSE v_rows;
+        RETURN v_total;
+    EXCEPTION WHEN OTHERS THEN
+        IF v_rows%ISOPEN THEN CLOSE v_rows; END IF;
+        RAISE;
+    END;
+
     PROCEDURE check_condition(p_ok BOOLEAN, p_message VARCHAR2) IS
     BEGIN
         IF p_ok IS NULL OR NOT p_ok THEN
@@ -47,8 +68,7 @@ BEGIN
     EXCEPTION WHEN OTHERS THEN
         IF SQLCODE <> -20213 THEN RAISE; END IF;
     END;
-    SELECT COUNT(*) INTO v_count FROM v_attempt_details
-     WHERE attempt_id = v_attempt AND (correct_answer IS NOT NULL OR explanation IS NOT NULL);
+    v_count := feedback_count;
     check_condition(v_count = 0, 'Feedback exposed during an active attempt.');
     BEGIN
         pkg_testing.expire_question(v_attempt);
@@ -73,8 +93,7 @@ BEGIN
     pkg_testing.submit_answer(v_attempt, v_second, NULL, '2');
     SELECT status, score_percent INTO v_status, v_count FROM attempts WHERE attempt_id = v_attempt;
     check_condition(v_status = 'FINISHED' AND v_count = 50, 'Last answer did not finalize and score the attempt.');
-    SELECT COUNT(*) INTO v_count FROM v_attempt_details
-     WHERE attempt_id = v_attempt AND correct_answer IS NOT NULL AND explanation IS NOT NULL;
+    v_count := feedback_count(TRUE);
     check_condition(v_count = 2, 'Enabled feedback missing after completion.');
     pkg_testing.abandon_attempt(v_attempt);
     SELECT status INTO v_status FROM attempts WHERE attempt_id = v_attempt;
@@ -82,8 +101,7 @@ BEGIN
 
     pkg_admin.archive_quiz(v_admin, v_quiz);
     pkg_admin.set_quiz_feedback(v_admin, v_quiz, 0);
-    SELECT COUNT(*) INTO v_count FROM v_attempt_details
-     WHERE attempt_id = v_attempt AND (correct_answer IS NOT NULL OR explanation IS NOT NULL);
+    v_count := feedback_count;
     check_condition(v_count = 0, 'Disabled feedback still exposed by Oracle.');
     pkg_admin.set_quiz_attempt_limit(v_admin, v_quiz, 1);
     pkg_admin.publish_quiz(v_admin, v_quiz);

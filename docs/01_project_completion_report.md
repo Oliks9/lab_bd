@@ -1,6 +1,6 @@
 # Отчет по выполненной работе
 
-Дата актуализации: 18.09.2026
+Дата актуализации: 19.09.2026
 
 Добавлен подбор N вопросов из категории X сложности Y внутри выбранного теста.
 Параметры задаются во вкладке «Подбор» у черновика; отбор, случайный порядок,
@@ -8,7 +8,7 @@
 Подробности: `07_question_selection.md`.
 
 Реализовано сравнение результата попытки со средним по другим участникам этого теста.
-Oracle-представление `v_attempt_comparison` вычисляет среднее, разницу в процентных
+Процедура Oracle `pkg_reports.attempt_result` вычисляет среднее, разницу в процентных
 пунктах и размер выборки; GUI показывает текстовую карточку без графиков. Тем самым
 реализовано сравнение со средними из пункта 7 исходного задания.
 
@@ -32,7 +32,7 @@ Oracle-представление `v_attempt_comparison` вычисляет ср
 
 - Проект структурирован как «боевое» приложение: `app/`, `sql/`, `docs/`, `docker/`, `build/`.
 - SQL-слой разделен по типам объектов:
-  - `01_tables`, `02_functions`, `03_procedures`, `04_triggers`, `05_packages`, `06_views`, `07_seed`, `08_migrations`, `tests`.
+  - `01_tables`, `02_functions`, `03_procedures`, `04_triggers`, `05_packages`, `07_seed`, `08_migrations`, `tests`.
 - Python-слой разделен на GUI и БД-доступ:
   - GUI: `app/quiz_client/ui.py`, `app/quiz_client/theme.py`;
   - DB API-обертки: `app/quiz_client/database.py`.
@@ -45,11 +45,11 @@ Oracle-представление `v_attempt_comparison` вычисляет ср
 - 5 индексов;
 - 4 standalone-функции;
 - 2 standalone-процедуры;
-- 2 PL/SQL-пакета (`pkg_admin`, `pkg_testing`);
+- 3 PL/SQL-пакета (`pkg_admin`, `pkg_testing`, `pkg_reports`);
 - 5 триггеров;
-- 6 представлений;
+- 7 процедур отчётности в `pkg_reports`, представления отсутствуют;
 - 5 миграций без потери данных;
-- 7 SQL smoke-тестов и GUI-тесты `app/tests/test_selection_ui.py`.
+- 8 SQL smoke-тестов, отдельная проверка seed-данных и 32 Python-теста в `app/tests`.
 
 Подробная техническая карта каждого объекта: `docs/02_database_logic_map.md`.
 
@@ -91,7 +91,7 @@ Oracle-представление `v_attempt_comparison` вычисляет ср
   - `QUESTION` — время на каждый вопрос.
 - Реализован серверный автопереход на следующий вопрос при таймауте (`pkg_testing.expire_question`).
 - Реализовано серверное оценивание всех типов вопросов.
-- Реализован просмотр результатов, включая `given_answer`, `correct_answer`, `explanation` через представления.
+- Реализован просмотр результатов, включая `given_answer`, `correct_answer`, `explanation` через `pkg_reports.attempt_details`.
 
 ## 2.6. Удаление и консистентность
 
