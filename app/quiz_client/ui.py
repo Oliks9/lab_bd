@@ -1653,9 +1653,13 @@ class QuizApplication(tk.Tk):
         options = tk.Text(option_field, height=3, width=32, bg="#ffffff", relief="solid", bd=1, font=("Segoe UI", 9))
         options.pack(fill="x", pady=(3, 5))
         correct_field = ttk.Frame(option_field, style="Panel.TFrame")
-        ttk.Label(correct_field, text="Номера правильных вариантов (например, 1 или 1,3)", style="Muted.TLabel").pack(anchor="w")
+        ttk.Label(correct_field, text="Номера правильных вариантов через запятую (например, 1,3)", style="Muted.TLabel").pack(anchor="w")
         correct = ttk.Entry(correct_field)
         correct.pack(fill="x", pady=(3, 0))
+        single_correct_field = ttk.Frame(option_field, style="Panel.TFrame")
+        ttk.Label(single_correct_field, text="Правильный вариант (выберите один)", style="Muted.TLabel").pack(anchor="w")
+        single_correct = ttk.Combobox(single_correct_field, state="readonly")
+        single_correct.pack(fill="x", pady=(3, 0))
         boolean_field = ttk.Frame(answer_area, style="Panel.TFrame")
         ttk.Label(boolean_field, text="Правильный ответ", style="Muted.TLabel").pack(anchor="w")
         boolean_answer = ttk.Combobox(boolean_field, values=["Верно", "Неверно"], state="readonly")
@@ -1678,10 +1682,23 @@ class QuizApplication(tk.Tk):
                     box.set(value)
                     return
 
+        def refresh_single_choices(_event=None):
+            selected = single_correct.get()
+            raw_options = [line.strip() for line in options.get("1.0", "end").splitlines() if line.strip()]
+            values = [f"{index} | {text}" for index, text in enumerate(raw_options, 1)]
+            single_correct.configure(values=values)
+            if selected in values:
+                single_correct.set(selected)
+            else:
+                single_correct.set("")
+            if options.edit_modified():
+                options.edit_modified(False)
+
         def update_answer_fields(_event=None):
             expected_field.pack_forget()
             option_field.pack_forget()
             correct_field.pack_forget()
+            single_correct_field.pack_forget()
             boolean_field.pack_forget()
             code = type_code()
             if code == "BOOLEAN":
@@ -1692,7 +1709,11 @@ class QuizApplication(tk.Tk):
             elif type_modes.get(code) == "OPTIONS":
                 options_label.configure(text="Варианты: один вариант в каждой строке")
                 option_field.pack(fill="x")
-                correct_field.pack(fill="x", pady=(0, 0))
+                if code == "SINGLE_CHOICE":
+                    refresh_single_choices()
+                    single_correct_field.pack(fill="x")
+                else:
+                    correct_field.pack(fill="x")
             else:
                 expected_labels = {
                     "TEXT": "Правильный текстовый ответ",
@@ -1714,6 +1735,7 @@ class QuizApplication(tk.Tk):
             points.insert(0, "1")
             options.delete("1.0", "end")
             correct.delete(0, "end")
+            single_correct.set("")
             boolean_answer.set("Верно")
             if type_values:
                 q_type.set(type_values[0])
@@ -1778,6 +1800,11 @@ class QuizApplication(tk.Tk):
             stored_options = self.gateway.admin_question_options(question_id)
             options.insert("1.0", "\n".join(row["option_text"] for row in stored_options))
             correct.insert(0, ",".join(str(row["seq_no"]) for row in stored_options if row["is_correct"] == 1))
+            single_correct.set("")
+            refresh_single_choices()
+            correct_positions = [index for index, row in enumerate(stored_options) if row["is_correct"] == 1]
+            if question["type_code"] == "SINGLE_CHOICE" and len(correct_positions) == 1:
+                single_correct.current(correct_positions[0])
             if question["type_code"] == "BOOLEAN":
                 correct_option = next((row["option_text"] for row in stored_options if row["is_correct"] == 1), "Верно")
                 boolean_answer.set(correct_option)
@@ -1807,10 +1834,24 @@ class QuizApplication(tk.Tk):
                             return
                         options_list = [(text, 1) for text in raw_options]
                     else:
-                        indexes = {int(value.strip()) for value in correct.get().split(",") if value.strip().isdigit()}
-                        if not raw_options or not indexes:
-                            messagebox.showwarning("Вопрос", "Для вопроса с выбором заполните варианты и номер правильного ответа.")
+                        if len(raw_options) < 2:
+                            messagebox.showwarning("Вопрос", "Добавьте минимум два варианта ответа.")
                             return
+                        if code == "SINGLE_CHOICE":
+                            refresh_single_choices()
+                            if single_correct.current() < 0:
+                                messagebox.showwarning("Вопрос", "Выберите ровно один правильный вариант ответа.")
+                                return
+                            indexes = {single_correct.current() + 1}
+                        else:
+                            tokens = [value.strip() for value in correct.get().split(",")]
+                            if not all(value.isdecimal() for value in tokens):
+                                messagebox.showwarning("Вопрос", "Укажите номера правильных вариантов через запятую, например 1,3.")
+                                return
+                            indexes = {int(value) for value in tokens}
+                            if any(index < 1 or index > len(raw_options) for index in indexes):
+                                messagebox.showwarning("Вопрос", "Номер правильного варианта должен соответствовать одной из строк ответа.")
+                                return
                         options_list = [(text, int(index in indexes)) for index, text in enumerate(raw_options, 1)]
                 fields = (
                     self.user.user_id,
@@ -1858,6 +1899,7 @@ class QuizApplication(tk.Tk):
         reflow_question_actions = flow_row(form_actions)
         q_quiz.bind("<<ComboboxSelected>>", refresh_question_context)
         q_type.bind("<<ComboboxSelected>>", update_answer_fields)
+        options.bind("<<Modified>>", refresh_single_choices)
         question_tree.bind("<<TreeviewSelect>>", load_question)
         update_answer_fields()
         refresh_question_context()

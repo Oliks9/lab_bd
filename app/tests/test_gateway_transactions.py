@@ -37,6 +37,23 @@ class GatewayTransactionTest(unittest.TestCase):
                 self.connection.rollback.assert_called_once()
                 self.connection.commit.assert_not_called()
 
+    def test_invalid_question_creation_rolls_back_all_options(self):
+        self.cursor.var.return_value.getvalue.return_value = 10
+        self.cursor.callproc.side_effect = [None, None, RuntimeError("Only one correct option")]
+        with self.assertRaisesRegex(RuntimeError, "Only one correct option"):
+            self.gateway.create_question(7, 9, 2, "SINGLE_CHOICE", "EASY", "Question", "", "", 1,
+                                         [("First", 1), ("Second", 1)])
+        self.connection.rollback.assert_called_once()
+        self.connection.commit.assert_not_called()
+
+    def test_invalid_question_edit_rolls_back_replacement(self):
+        self.cursor.callproc.side_effect = [None, None, RuntimeError("Only one correct option")]
+        with self.assertRaisesRegex(RuntimeError, "Only one correct option"):
+            self.gateway.update_question(7, 10, 2, "SINGLE_CHOICE", "EASY", "Edited", "", "", 1,
+                                         [("First", 1), ("Second", 1)])
+        self.connection.rollback.assert_called_once()
+        self.connection.commit.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

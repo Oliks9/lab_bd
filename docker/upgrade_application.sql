@@ -37,5 +37,6 @@ PROMPT === Recompiling PL/SQL application modules without deleting data ===
 @/opt/quiz-project/sql/tests/comparison_smoke_test.sql
 @/opt/quiz-project/sql/tests/question_selection_smoke_test.sql
 @/opt/quiz-project/sql/tests/reports_smoke_test.sql
+@/opt/quiz-project/sql/tests/question_options_smoke_test.sql
 
 EXIT

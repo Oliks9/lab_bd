@@ -12,5 +12,6 @@ CONNECT quiz_app/"P@ssw0rd"@//localhost:1521/FREEPDB1
 @/opt/quiz-project/sql/tests/comparison_smoke_test.sql
 @/opt/quiz-project/sql/tests/question_selection_smoke_test.sql
 @/opt/quiz-project/sql/tests/reports_smoke_test.sql
+@/opt/quiz-project/sql/tests/question_options_smoke_test.sql
 
 EXIT

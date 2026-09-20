@@ -241,16 +241,27 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
     ) IS
         v_quiz_id NUMBER;
         v_type_mode question_types.answer_mode%TYPE;
+        v_type_code questions.type_code%TYPE;
+        v_correct_count NUMBER;
         v_seq NUMBER;
     BEGIN
-        SELECT q.quiz_id, qt.answer_mode
-          INTO v_quiz_id, v_type_mode
-          FROM questions q
-          JOIN question_types qt ON qt.type_code = q.type_code
-         WHERE q.question_id = p_question_id;
+        SELECT quiz_id INTO v_quiz_id FROM questions WHERE question_id = p_question_id;
         require_quiz_owner(p_actor_id, v_quiz_id);
+        SELECT q.type_code, qt.answer_mode
+          INTO v_type_code, v_type_mode
+          FROM questions q JOIN question_types qt ON qt.type_code = q.type_code
+         WHERE q.question_id = p_question_id;
         IF v_type_mode <> 'OPTIONS' THEN
             RAISE_APPLICATION_ERROR(-20107, 'Для вопроса с вводом текста варианты ответа не добавляются.');
+        END IF;
+
+        IF v_type_code IN ('SINGLE_CHOICE', 'BOOLEAN') AND p_is_correct = 1 THEN
+            SELECT COUNT(*) INTO v_correct_count
+              FROM question_options
+             WHERE question_id = p_question_id AND is_correct = 1;
+            IF v_correct_count > 0 THEN
+                RAISE_APPLICATION_ERROR(-20142, 'Для этого типа вопроса можно указать только один правильный вариант ответа.');
+            END IF;
         END IF;
 
         SELECT NVL(MAX(seq_no), 0) + 1
