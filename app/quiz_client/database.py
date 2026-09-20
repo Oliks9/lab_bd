@@ -318,6 +318,7 @@ class OracleGateway:
                 for option_text, is_correct in options:
                     option_id = cursor.var(int)
                     cursor.callproc("pkg_admin.add_option", [actor_id, created_id, option_text, is_correct, option_id])
+                cursor.callproc("pkg_admin.validate_question", [actor_id, created_id])
             self.connection.commit()
             return created_id
         except Exception:
@@ -334,6 +335,7 @@ class OracleGateway:
                 for option_text, is_correct in options:
                     option_id = cursor.var(int)
                     cursor.callproc("pkg_admin.add_option", [actor_id, question_id, option_text, is_correct, option_id])
+                cursor.callproc("pkg_admin.validate_question", [actor_id, question_id])
             self.connection.commit()
         except Exception:
             self.connection.rollback()

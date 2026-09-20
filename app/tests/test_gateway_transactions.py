@@ -54,6 +54,39 @@ class GatewayTransactionTest(unittest.TestCase):
         self.connection.rollback.assert_called_once()
         self.connection.commit.assert_not_called()
 
+    def test_final_validation_failure_rolls_back_creation_and_editing(self):
+        self.cursor.var.return_value.getvalue.return_value = 10
+        operations = [
+            lambda: self.gateway.create_question(7, 9, 2, "MULTIPLE_CHOICE", "EASY", "Question", "", "", 1,
+                                                 [("First", 1), ("Second", 0)]),
+            lambda: self.gateway.update_question(7, 10, 2, "MULTIPLE_CHOICE", "EASY", "Edited", "", "", 1,
+                                                 [("First", 1), ("Second", 0)]),
+        ]
+        for operation in operations:
+            self.connection.reset_mock()
+            self.cursor.callproc.side_effect = [None, None, None, RuntimeError("At least two correct options")]
+            with self.assertRaisesRegex(RuntimeError, "At least two correct options"):
+                operation()
+            self.cursor.callproc.assert_called_with("pkg_admin.validate_question", [7, 10])
+            self.connection.rollback.assert_called_once()
+            self.connection.commit.assert_not_called()
+
+    def test_valid_question_is_checked_by_oracle_before_commit(self):
+        self.cursor.var.return_value.getvalue.return_value = 10
+        operations = [
+            lambda: self.gateway.create_question(7, 9, 2, "MULTIPLE_CHOICE", "EASY", "Question", "", "", 1,
+                                                 [("First", 1), ("Second", 1)]),
+            lambda: self.gateway.update_question(7, 10, 2, "MULTIPLE_CHOICE", "EASY", "Edited", "", "", 1,
+                                                 [("First", 1), ("Second", 1)]),
+        ]
+        for operation in operations:
+            self.connection.reset_mock()
+            self.cursor.callproc.side_effect = None
+            operation()
+            self.cursor.callproc.assert_called_with("pkg_admin.validate_question", [7, 10])
+            self.connection.commit.assert_called_once()
+            self.connection.rollback.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

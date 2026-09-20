@@ -1653,7 +1653,7 @@ class QuizApplication(tk.Tk):
         options = tk.Text(option_field, height=3, width=32, bg="#ffffff", relief="solid", bd=1, font=("Segoe UI", 9))
         options.pack(fill="x", pady=(3, 5))
         correct_field = ttk.Frame(option_field, style="Panel.TFrame")
-        ttk.Label(correct_field, text="Номера правильных вариантов через запятую (например, 1,3)", style="Muted.TLabel").pack(anchor="w")
+        ttk.Label(correct_field, text="Номера правильных вариантов (минимум два, например 1,3)", style="Muted.TLabel").pack(anchor="w")
         correct = ttk.Entry(correct_field)
         correct.pack(fill="x", pady=(3, 0))
         single_correct_field = ttk.Frame(option_field, style="Panel.TFrame")
@@ -1851,6 +1851,9 @@ class QuizApplication(tk.Tk):
                             indexes = {int(value) for value in tokens}
                             if any(index < 1 or index > len(raw_options) for index in indexes):
                                 messagebox.showwarning("Вопрос", "Номер правильного варианта должен соответствовать одной из строк ответа.")
+                                return
+                            if code == "MULTIPLE_CHOICE" and len(indexes) < 2:
+                                messagebox.showwarning("Вопрос", "Для «Нескольких вариантов» укажите минимум два разных правильных ответа. Для одного используйте тип «Один вариант».")
                                 return
                         options_list = [(text, int(index in indexes)) for index, text in enumerate(raw_options, 1)]
                 fields = (

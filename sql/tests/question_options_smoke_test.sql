@@ -8,6 +8,10 @@ DECLARE
     v_option NUMBER;
     v_count NUMBER;
     v_seq NUMBER;
+    v_player NUMBER;
+    v_attempt NUMBER;
+    v_first_correct NUMBER;
+    v_second_correct NUMBER;
 
     PROCEDURE check_ok(p_ok BOOLEAN, p_message VARCHAR2) IS
     BEGIN
@@ -29,13 +33,23 @@ DECLARE
         check_ok(v_count = 1, 'Rejected option changed stored answers');
     END;
 
-    PROCEDURE reject_publication IS
+    PROCEDURE reject_publication(p_code NUMBER DEFAULT -20109) IS
     BEGIN
         BEGIN
             pkg_admin.publish_quiz(v_admin, v_quiz);
             RAISE_APPLICATION_ERROR(-20984, 'Invalid question published');
         EXCEPTION WHEN OTHERS THEN
-            IF SQLCODE <> -20109 THEN RAISE; END IF;
+            IF SQLCODE <> p_code THEN RAISE; END IF;
+        END;
+    END;
+
+    PROCEDURE reject_validation(p_code NUMBER) IS
+    BEGIN
+        BEGIN
+            pkg_admin.validate_question(v_admin, v_question);
+            RAISE_APPLICATION_ERROR(-20984, 'Invalid question passed final validation');
+        EXCEPTION WHEN OTHERS THEN
+            IF SQLCODE <> p_code THEN RAISE; END IF;
         END;
     END;
 BEGIN
@@ -47,6 +61,7 @@ BEGIN
     pkg_admin.add_question(v_admin, v_quiz, v_category, 'SINGLE_CHOICE', 'EASY', 'One answer', NULL, NULL, 1, v_question);
     pkg_admin.add_option(v_admin, v_question, 'Wrong one', 0, v_option);
     pkg_admin.add_option(v_admin, v_question, 'Wrong two', 0, v_option);
+    reject_validation(-20109);
     reject_publication;
     pkg_admin.add_option(v_admin, v_question, 'Correct', 1, v_option);
     reject_extra_correct;
@@ -73,6 +88,7 @@ BEGIN
         pkg_admin.add_option(v_admin, v_question, 'Second', 1, v_option);
         SELECT COUNT(*) INTO v_count FROM question_options WHERE question_id = v_question AND is_correct = 1;
         check_ok(v_count = 2, 'Multiple correct options must remain supported');
+        pkg_admin.validate_question(v_admin, v_question);
         pkg_admin.publish_quiz(v_admin, v_quiz);
         pkg_admin.archive_quiz(v_admin, v_quiz);
     END LOOP;
@@ -81,6 +97,26 @@ BEGIN
     pkg_admin.add_option(v_admin, v_question, 'Correct', 1, v_option);
     reject_extra_correct;
     pkg_admin.publish_quiz(v_admin, v_quiz);
+    pkg_admin.archive_quiz(v_admin, v_quiz);
+    pkg_admin.update_question(v_admin, v_question, v_category, 'MULTIPLE_CHOICE', 'EASY', 'At least two', NULL, NULL, 1);
+    pkg_admin.add_option(v_admin, v_question, 'Wrong', 0, v_option);
+    reject_validation(-20143);
+    reject_publication(-20143);
+    pkg_admin.add_option(v_admin, v_question, 'First correct', 1, v_first_correct);
+    reject_validation(-20143);
+    reject_publication(-20143);
+    pkg_admin.add_option(v_admin, v_question, 'Second correct', 1, v_second_correct);
+    pkg_admin.validate_question(v_admin, v_question);
+    pkg_admin.publish_quiz(v_admin, v_quiz);
+    pr_register_user('multi_' || LOWER(RAWTOHEX(SYS_GUID())), 'MultiCheck123!', 'Multiple answers', v_player);
+    pkg_testing.start_attempt(v_player, v_quiz, v_attempt);
+    pkg_testing.submit_answer(v_attempt, v_question, TO_CHAR(v_first_correct), NULL);
+    SELECT score_percent INTO v_count FROM attempts WHERE attempt_id = v_attempt;
+    check_ok(v_count = 0, 'One selected answer must not earn points for multiple choice');
+    pkg_testing.start_attempt(v_player, v_quiz, v_attempt);
+    pkg_testing.submit_answer(v_attempt, v_question, TO_CHAR(v_first_correct) || ',' || TO_CHAR(v_second_correct), NULL);
+    SELECT score_percent INTO v_count FROM attempts WHERE attempt_id = v_attempt;
+    check_ok(v_count = 100, 'All correct options must earn full points');
     ROLLBACK TO question_options_test;
     DBMS_OUTPUT.PUT_LINE('Question options smoke test passed: single, boolean, multiple, ordering and type changes.');
 EXCEPTION WHEN OTHERS THEN

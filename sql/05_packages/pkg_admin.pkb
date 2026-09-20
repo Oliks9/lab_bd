@@ -274,12 +274,47 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
         RETURNING option_id INTO p_option_id;
     END;
 
+    PROCEDURE require_question_answers(p_question_id IN NUMBER) IS
+        v_type questions.type_code%TYPE;
+        v_mode question_types.answer_mode%TYPE;
+        v_expected questions.expected_answer%TYPE;
+        v_total NUMBER;
+        v_correct NUMBER;
+    BEGIN
+        SELECT q.type_code, qt.answer_mode, q.expected_answer
+          INTO v_type, v_mode, v_expected
+          FROM questions q JOIN question_types qt ON qt.type_code = q.type_code
+         WHERE q.question_id = p_question_id;
+        SELECT COUNT(*), NVL(SUM(is_correct), 0) INTO v_total, v_correct
+          FROM question_options WHERE question_id = p_question_id;
+        IF v_type = 'MULTIPLE_CHOICE' AND v_correct < 2 THEN
+            RAISE_APPLICATION_ERROR(-20143, 'Для вопроса «Несколько вариантов» нужно минимум два разных правильных ответа. Для одного выберите тип «Один вариант».');
+        END IF;
+        IF (v_mode = 'TEXT' AND v_expected IS NULL)
+           OR (v_mode = 'OPTIONS' AND (v_total < 2 OR v_correct = 0
+               OR (v_type IN ('SINGLE_CHOICE', 'BOOLEAN') AND v_correct <> 1))) THEN
+            RAISE_APPLICATION_ERROR(-20109, 'Заполните варианты и правильные ответы вопроса в соответствии с его типом.');
+        END IF;
+    END;
+
+    PROCEDURE validate_question (
+        p_actor_id IN NUMBER,
+        p_question_id IN NUMBER
+    ) IS
+        v_quiz_id NUMBER;
+    BEGIN
+        SELECT quiz_id INTO v_quiz_id FROM questions WHERE question_id = p_question_id;
+        require_quiz_owner(p_actor_id, v_quiz_id);
+        require_question_answers(p_question_id);
+    EXCEPTION WHEN NO_DATA_FOUND THEN
+        RAISE_APPLICATION_ERROR(-20123, 'Вопрос не найден.');
+    END;
+
     PROCEDURE publish_quiz (
         p_actor_id IN NUMBER,
         p_quiz_id IN NUMBER
     ) IS
         v_question_count NUMBER;
-        v_invalid_count NUMBER;
     BEGIN
         require_quiz_owner(p_actor_id, p_quiz_id);
         SELECT COUNT(*) INTO v_question_count FROM questions WHERE quiz_id = p_quiz_id;
@@ -288,28 +323,9 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
             RAISE_APPLICATION_ERROR(-20108, 'В тест необходимо добавить хотя бы один вопрос.');
         END IF;
 
-        SELECT COUNT(*)
-          INTO v_invalid_count
-          FROM questions q
-          JOIN question_types qt ON qt.type_code = q.type_code
-         WHERE q.quiz_id = p_quiz_id
-           AND (
-                (qt.answer_mode = 'TEXT' AND q.expected_answer IS NULL)
-                OR (
-                    qt.answer_mode = 'OPTIONS'
-                    AND (
-                        (SELECT COUNT(*) FROM question_options qo WHERE qo.question_id = q.question_id) < 2
-                        OR (SELECT COUNT(*) FROM question_options qo WHERE qo.question_id = q.question_id AND qo.is_correct = 1) = 0
-                        OR (
-                            q.type_code IN ('SINGLE_CHOICE', 'BOOLEAN')
-                            AND (SELECT COUNT(*) FROM question_options qo WHERE qo.question_id = q.question_id AND qo.is_correct = 1) <> 1
-                        )
-                    )
-                )
-           );
-        IF v_invalid_count > 0 THEN
-            RAISE_APPLICATION_ERROR(-20109, 'Публикация невозможна: заполните варианты и правильные ответы у всех вопросов.');
-        END IF;
+        FOR question IN (SELECT question_id FROM questions WHERE quiz_id = p_quiz_id ORDER BY seq_no) LOOP
+            require_question_answers(question.question_id);
+        END LOOP;
 
         UPDATE quizzes SET status = 'PUBLISHED' WHERE quiz_id = p_quiz_id;
     END;

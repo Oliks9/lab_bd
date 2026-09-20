@@ -24,7 +24,7 @@ class QuestionEditorAnswersTest(unittest.TestCase):
                              and any(str(v).startswith("SINGLE_CHOICE |") for v in w.cget("values")))
         self.options = next(w for w in widgets if isinstance(w, tk.Text))
         self.single = self.field("Правильный вариант (выберите один)", ttk.Combobox)
-        self.multiple = self.field("Номера правильных вариантов через запятую (например, 1,3)", ttk.Entry)
+        self.multiple = self.field("Номера правильных вариантов (минимум два, например 1,3)", ttk.Entry)
         self.question_text = self.field("Текст вопроса", ttk.Entry)
         self.save = next(w for w in widgets if isinstance(w, ttk.Button) and w.cget("text") == "Добавить вопрос")
         self.tree = next(w for w in widgets if isinstance(w, ttk.Treeview))
@@ -81,7 +81,7 @@ class QuestionEditorAnswersTest(unittest.TestCase):
         self.select_type("MULTIPLE_CHOICE")
         self.assertTrue(self.multiple.master.winfo_manager())
         self.assertFalse(self.single.master.winfo_manager())
-        for text in ("", "0", "4", "1,4", "1,no", "1,", "-1", "1.5"):
+        for text in ("", "0", "4", "1,4", "1,no", "1,", "-1", "1.5", "1", "1,1", "2,02"):
             with self.subTest(text=text):
                 self.multiple.delete(0, "end")
                 self.multiple.insert(0, text)
@@ -102,6 +102,24 @@ class QuestionEditorAnswersTest(unittest.TestCase):
             self.multiple.insert(0, "1")
             self.submit().assert_called_once()
             self.gateway.create_question.assert_not_called()
+
+    def test_editing_multiple_requires_two_distinct_correct_answers(self):
+        self.question["type_code"] = "MULTIPLE_CHOICE"
+        self.gateway.admin_question_options.return_value = [
+            dict(option_text="First", seq_no=1, is_correct=1),
+            dict(option_text="Second", seq_no=2, is_correct=0),
+            dict(option_text="Third", seq_no=3, is_correct=0),
+        ]
+        self.tree.selection_set("10")
+        self.tree.event_generate("<<TreeviewSelect>>")
+        self.pump()
+        self.submit().assert_called_once()
+        self.gateway.update_question.assert_not_called()
+        self.multiple.delete(0, "end")
+        self.multiple.insert(0, "1,3")
+        self.submit().assert_not_called()
+        self.assertEqual(self.gateway.update_question.call_args.args[-1],
+                         [("First", 1), ("Second", 0), ("Third", 1)])
 
     def test_editing_loads_one_answer_and_does_not_guess_for_legacy_invalid_data(self):
         self.gateway.admin_question_options.return_value = [

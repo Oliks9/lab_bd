@@ -59,6 +59,11 @@ CREATE OR REPLACE PACKAGE pkg_admin AS
         p_option_id OUT NUMBER
     );
 
+    PROCEDURE validate_question (
+        p_actor_id IN NUMBER,
+        p_question_id IN NUMBER
+    );
+
     PROCEDURE publish_quiz (
         p_actor_id IN NUMBER,
         p_quiz_id IN NUMBER
