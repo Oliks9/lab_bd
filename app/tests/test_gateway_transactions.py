@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 from quiz_client.database import OracleGateway
 
@@ -16,6 +16,23 @@ class GatewayTransactionTest(unittest.TestCase):
         self.cursor.callproc.assert_called_once_with("pkg_admin.set_quiz_selection", [7, 9, 3, 10, "EASY"])
         self.connection.commit.assert_called_once()
         self.connection.rollback.assert_not_called()
+
+    def test_quiz_settings_commit_together(self):
+        self.gateway.save_quiz_settings(7, 9, 0, 2, "RESTRICTED")
+        self.assertEqual(self.cursor.callproc.call_args_list, [
+            call("pkg_admin.set_quiz_feedback", [7, 9, 0]),
+            call("pkg_admin.set_quiz_attempt_limit", [7, 9, 2]),
+            call("pkg_admin.set_quiz_access_mode", [7, 9, "RESTRICTED"]),
+        ])
+        self.connection.commit.assert_called_once()
+        self.connection.rollback.assert_not_called()
+
+    def test_access_error_rolls_back_all_quiz_settings(self):
+        self.cursor.callproc.side_effect = [None, None, RuntimeError("Invalid access mode")]
+        with self.assertRaisesRegex(RuntimeError, "Invalid access mode"):
+            self.gateway.save_quiz_settings(7, 9, 0, 2, "invalid")
+        self.connection.rollback.assert_called_once()
+        self.connection.commit.assert_not_called()
 
     def test_failed_mutations_release_locks(self):
         operations = [

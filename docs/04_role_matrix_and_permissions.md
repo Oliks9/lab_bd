@@ -1,6 +1,6 @@
 # Матрица ролей и прав
 
-Дата актуализации: 19.09.2026
+Дата актуализации: 21.09.2026
 
 ## 1. Роли
 
@@ -46,6 +46,7 @@
 | Скрыть тест в черновик | Нет | Да (свой тест) | Да | `pkg_admin.archive_quiz` |
 | Настроить `show_feedback` | Нет | Да (свой DRAFT) | Да | `pkg_admin.set_quiz_feedback` |
 | Настроить `attempt_limit` | Нет | Да (свой DRAFT) | Да | `pkg_admin.set_quiz_attempt_limit` |
+| Изменить публичный/закрытый доступ | Нет | Да (свой DRAFT) | Да (любой DRAFT) | `pkg_admin.set_quiz_access_mode` |
 | Настроить подбор N / категория / сложность | Нет | Да (свой DRAFT) | Да (любой DRAFT) | `pkg_admin.set_quiz_selection` |
 | Выдать доступ к закрытому тесту | Нет | Да (свой тест) | Да | `pkg_admin.grant_access` |
 | Удалить вопрос | Нет | Да (свой тест) | Да | `pkg_admin.delete_question` |
@@ -76,7 +77,7 @@
 
 - Доступ для изменения только к тестам в `DRAFT`.
 - Тест должен принадлежать текущему автору, либо пользователь `ADMIN`.
-- Используется в `add_question`, `update_question`, `add_option`, `publish_quiz`, `set_quiz_feedback`, `set_quiz_attempt_limit`.
+- Используется в `add_question`, `update_question`, `add_option`, `publish_quiz`, `set_quiz_feedback`, `set_quiz_attempt_limit`, `set_quiz_access_mode`.
 
 ## 4.4. `require_quiz_manager`
 

@@ -330,6 +330,20 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
         UPDATE quizzes SET status = 'PUBLISHED' WHERE quiz_id = p_quiz_id;
     END;
 
+    PROCEDURE set_quiz_access_mode (
+        p_actor_id IN NUMBER,
+        p_quiz_id IN NUMBER,
+        p_access_mode IN VARCHAR2
+    ) IS
+        v_access_mode VARCHAR2(32767) := UPPER(TRIM(p_access_mode));
+    BEGIN
+        require_quiz_owner(p_actor_id, p_quiz_id);
+        IF v_access_mode IS NULL OR v_access_mode NOT IN ('PUBLIC', 'RESTRICTED') THEN
+            RAISE_APPLICATION_ERROR(-20144, 'Выберите публичный доступ или доступ по приглашению.');
+        END IF;
+        UPDATE quizzes SET access_mode = v_access_mode WHERE quiz_id = p_quiz_id;
+    END;
+
     PROCEDURE set_quiz_feedback (
         p_actor_id IN NUMBER,
         p_quiz_id IN NUMBER,

@@ -356,6 +356,17 @@ class OracleGateway:
     def set_quiz_feedback(self, actor_id: int, quiz_id: int, show_feedback: int) -> None:
         self._commit_procedure("pkg_admin.set_quiz_feedback", [actor_id, quiz_id, show_feedback])
 
+    def save_quiz_settings(self, actor_id: int, quiz_id: int, show_feedback: int, attempt_limit: int | None, access_mode: str) -> None:
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.callproc("pkg_admin.set_quiz_feedback", [actor_id, quiz_id, show_feedback])
+                cursor.callproc("pkg_admin.set_quiz_attempt_limit", [actor_id, quiz_id, attempt_limit])
+                cursor.callproc("pkg_admin.set_quiz_access_mode", [actor_id, quiz_id, access_mode])
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
+
     def set_quiz_attempt_limit(self, actor_id: int, quiz_id: int, attempt_limit: int | None) -> None:
         self._commit_procedure("pkg_admin.set_quiz_attempt_limit", [actor_id, quiz_id, attempt_limit])
 

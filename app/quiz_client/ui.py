@@ -2,7 +2,7 @@ import random
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from .config import ConnectionSettings, load_settings, save_settings
+from .config import ConnectionSettings, OracleAddress, build_connection_dsn, connection_label, load_settings, parse_connection_dsn, save_settings
 from .database import OracleGateway, SessionUser
 from .theme import COLORS, configure_theme
 from .layout import ScrollArea, ScrollTable, flow_row, responsive_columns, reveal_widget, scroll_event
@@ -282,47 +282,94 @@ class QuizApplication(tk.Tk):
         settings = load_settings()
         outer, form = self.panel(self.page, padding=28)
         outer.pack(fill="x", padx=24, pady=(28, 0))
-        ttk.Label(form, text="Подключение к базе", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 18))
-        ttk.Label(form, text="DSN (host:port/service)", style="Card.TLabel").grid(row=1, column=0, sticky="w", pady=6)
-        dsn = ttk.Entry(form, width=48)
-        dsn.insert(0, settings.dsn)
-        dsn.grid(row=1, column=1, sticky="ew", padx=(18, 0), pady=6)
-        ttk.Label(form, text="Пользователь схемы", style="Card.TLabel").grid(row=2, column=0, sticky="w", pady=6)
-        schema_user = ttk.Entry(form, width=48)
-        schema_user.insert(0, settings.schema_user)
-        schema_user.grid(row=2, column=1, sticky="ew", padx=(18, 0), pady=6)
-        ttk.Label(form, text="Пароль схемы", style="Card.TLabel").grid(row=3, column=0, sticky="w", pady=6)
-        schema_password = ttk.Entry(form, show="*", width=48)
-        schema_password.grid(row=3, column=1, sticky="ew", padx=(18, 0), pady=6)
-        form.columnconfigure(1, weight=1)
+        ttk.Label(form, text="Подключение к базе", style="CardTitle.TLabel").pack(anchor="w", pady=(0, 14))
+        parsed = parse_connection_dsn(settings.dsn)
+        address = parsed or OracleAddress()
+        advanced = tk.BooleanVar(value=parsed is None)
+        address_area = ttk.Frame(form, style="Panel.TFrame")
+        address_area.pack(fill="x")
+        basic = ttk.Frame(address_area, style="Panel.TFrame")
+        advanced_form = ttk.Frame(address_area, style="Panel.TFrame")
 
-        note = (
-            "Эти данные используются для соединения с Oracle. "
-            "В Docker-конфигурации оставьте значения по умолчанию и укажите пароль P@ssw0rd."
-        )
-        ttk.Label(form, text=note, style="Muted.TLabel", wraplength=690, justify="left").grid(
-            row=4, column=0, columnspan=2, sticky="w", pady=(15, 18)
-        )
+        def entry(parent, caption, value="", password=False):
+            ttk.Label(parent, text=caption, style="Card.TLabel").pack(anchor="w", pady=(7, 3))
+            widget = ttk.Entry(parent, width=40, show="*" if password else "")
+            widget.insert(0, value)
+            widget.pack(fill="x")
+            return widget
+
+        host = entry(basic, "Сервер (IP-адрес или имя)", address.host)
+        port = entry(basic, "Порт", str(address.port))
+        ttk.Label(basic, text="Тип подключения", style="Card.TLabel").pack(anchor="w", pady=(7, 3))
+        database_kind = ttk.Combobox(basic, values=["Имя службы (Service name)", "SID"], state="readonly")
+        database_kind.current(1 if address.mode == "SID" else 0)
+        database_kind.pack(fill="x")
+        database_caption = ttk.Label(basic, text="", style="Card.TLabel")
+        database_caption.pack(anchor="w", pady=(7, 3))
+        database_name = ttk.Entry(basic, width=40)
+        database_name.insert(0, address.database)
+        database_name.pack(fill="x")
+        dsn = entry(advanced_form, "Готовая строка подключения (DSN)", settings.dsn)
+
+        def update_kind(_event=None):
+            database_caption.configure(text="SID базы данных" if database_kind.current() == 1 else "Имя службы Oracle")
+
+        def toggle_address():
+            if advanced.get():
+                if basic.winfo_manager():
+                    try:
+                        value = build_connection_dsn(host.get(), port.get(), database_name.get(), "SID" if database_kind.current() == 1 else "SERVICE_NAME")
+                        dsn.delete(0, "end")
+                        dsn.insert(0, value)
+                    except ValueError:
+                        pass
+                basic.pack_forget()
+                advanced_form.pack(fill="x")
+            else:
+                if advanced_form.winfo_manager():
+                    value = parse_connection_dsn(dsn.get())
+                    if value is None and dsn.get().strip():
+                        advanced.set(True)
+                        messagebox.showwarning("Подключение", "Эта строка содержит дополнительные параметры. Используйте готовую строку или очистите её и заполните поля заново.")
+                        return
+                    elif value is not None:
+                        for widget, text in ((host, value.host), (port, str(value.port)), (database_name, value.database)):
+                            widget.delete(0, "end")
+                            widget.insert(0, text)
+                        database_kind.current(1 if value.mode == "SID" else 0)
+                advanced_form.pack_forget()
+                basic.pack(fill="x")
+            update_kind()
+
+        ttk.Checkbutton(form, text="Ввести готовую строку подключения (дополнительно)", variable=advanced, command=toggle_address).pack(anchor="w", pady=(10, 3))
+        schema_user = entry(form, "Пользователь схемы Oracle", settings.schema_user)
+        schema_password = entry(form, "Пароль схемы Oracle", password=True)
+        ttk.Label(form, text="Данные адреса и имя схемы запоминаются. Пароль не сохраняется.\nПосле подключения войдите под пользователем приложения.", style="Muted.TLabel", wraplength=690, justify="left").pack(anchor="w", pady=(12, 14))
+        database_kind.bind("<<ComboboxSelected>>", update_kind)
+        toggle_address()
 
         def connect():
             try:
-                self.gateway.connect(dsn.get().strip(), schema_user.get().strip(), schema_password.get())
-                self.connected_dsn = dsn.get().strip()
-                save_settings(ConnectionSettings(dsn.get().strip(), schema_user.get().strip()))
+                value = dsn.get().strip() if advanced.get() else build_connection_dsn(host.get(), port.get(), database_name.get(), "SID" if database_kind.current() == 1 else "SERVICE_NAME")
+                if not value or not schema_user.get().strip() or not schema_password.get():
+                    raise ValueError("Заполните адрес базы, пользователя схемы и пароль.")
+                self.gateway.connect(value, schema_user.get().strip(), schema_password.get())
+                self.connected_dsn = value
+                save_settings(ConnectionSettings(value, schema_user.get().strip()))
                 self.show_login_page()
             except Exception as exc:
                 self.report_error(exc)
 
-        ttk.Button(form, text="Подключиться", style="Primary.TButton", command=connect).grid(row=5, column=0, columnspan=2, sticky="w")
+        ttk.Button(form, text="Подключиться", style="Primary.TButton", command=connect).pack(anchor="w")
         self.set_enter_action(connect)
-        dsn.focus_set()
+        schema_password.focus_set()
 
     def show_auth(self):
         self.show_login_page()
 
     def auth_panel(self, title, subtitle):
         self.clear_page(scrollable=True)
-        connection_note = self.connected_dsn or load_settings().dsn
+        connection_note = connection_label(self.connected_dsn or load_settings().dsn)
         self.heading(
             title,
             f"{subtitle} Подключение к БД: {connection_note}",
@@ -2068,6 +2115,10 @@ class QuizApplication(tk.Tk):
         ttk.Label(settings, text="Настройки выбранного теста", style="CardTitle.TLabel").pack(anchor="w")
         state_actions = ttk.Frame(settings, style="Panel.TFrame")
         state_actions.pack(fill="x", pady=(8, 0))
+        ttk.Label(settings, text="Доступ к тесту", style="Muted.TLabel").pack(anchor="w", pady=(8, 0))
+        access_mode = ttk.Combobox(settings, values=list(ACCESS_NAMES.values()), state="readonly", width=25)
+        access_mode.pack(anchor="w", pady=(4, 0))
+        ttk.Label(settings, text="Публичный: для всех участников. По приглашению: только для выбранных пользователей.\nРезультаты и ранее выданные приглашения сохраняются.", style="Muted.TLabel").pack(anchor="w", pady=(4, 0))
         feedback_var = tk.BooleanVar(value=True)
         feedback_toggle = ttk.Checkbutton(
             settings,
@@ -2100,7 +2151,8 @@ class QuizApplication(tk.Tk):
                 feedback_toggle.configure(state="disabled")
                 save_feedback.configure(state="disabled")
                 attempt_limit_entry.configure(state="disabled")
-                save_attempt_limit.configure(state="disabled")
+                access_mode.set("")
+                access_mode.configure(state="disabled")
                 feedback_hint.configure(text="Выберите тест. Изменение доступно только для черновика.")
                 for child in chips_anchor.winfo_children():
                     child.destroy()
@@ -2118,17 +2170,18 @@ class QuizApplication(tk.Tk):
             )
             feedback_var.set(int(row.get("show_feedback") or 0) == 1)
             attempt_limit_value.set(str(row.get("attempt_limit") or 0))
+            access_mode.set(ACCESS_NAMES[row["access_mode"]])
             if row["status"] == "DRAFT":
                 feedback_toggle.configure(state="normal")
                 save_feedback.configure(state="normal")
                 attempt_limit_entry.configure(state="normal")
-                save_attempt_limit.configure(state="normal")
+                access_mode.configure(state="readonly")
                 feedback_hint.configure(text="Черновик: настройку можно менять перед публикацией.")
             else:
                 feedback_toggle.configure(state="disabled")
                 save_feedback.configure(state="disabled")
                 attempt_limit_entry.configure(state="disabled")
-                save_attempt_limit.configure(state="disabled")
+                access_mode.configure(state="disabled")
                 feedback_hint.configure(text="Опубликованный тест: чтобы изменить настройку, сначала скройте его в черновик.")
 
         def parse_attempt_limit():
@@ -2154,11 +2207,12 @@ class QuizApplication(tk.Tk):
             if parsed is None:
                 return False
             try:
-                self.gateway.set_quiz_feedback(self.user.user_id, row["quiz_id"], int(feedback_var.get()))
-                self.gateway.set_quiz_attempt_limit(
+                self.gateway.save_quiz_settings(
                     self.user.user_id,
                     row["quiz_id"],
+                    int(feedback_var.get()),
                     parsed if parsed > 0 else None,
+                    next(code for code, label in ACCESS_NAMES.items() if label == access_mode.get()),
                 )
                 if show_success:
                     messagebox.showinfo("Настройки", "Настройки черновика сохранены.")
@@ -2173,23 +2227,11 @@ class QuizApplication(tk.Tk):
 
         save_feedback = ttk.Button(
             settings,
-            text="Сохранить настройку для черновика",
+            text="Сохранить настройки",
             style="Quiet.TButton",
             command=apply_feedback_setting,
         )
         save_feedback.pack(anchor="w", pady=(8, 0))
-
-        def apply_attempt_limit_setting():
-            if persist_draft_settings(show_success=True):
-                self.show_admin("Публикация")
-
-        save_attempt_limit = ttk.Button(
-            settings,
-            text="Сохранить лимит попыток",
-            style="Quiet.TButton",
-            command=apply_attempt_limit_setting,
-        )
-        save_attempt_limit.pack(anchor="w", pady=(8, 0))
 
         def publish():
             if not tree.selection():
