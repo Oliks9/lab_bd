@@ -4,6 +4,7 @@ from tkinter import messagebox, ttk
 
 from .config import ConnectionSettings, OracleAddress, build_connection_dsn, connection_label, load_settings, parse_connection_dsn, save_settings
 from .database import OracleGateway, SessionUser
+from .installation_ui import open_installation
 from .theme import COLORS, configure_theme
 from .layout import ScrollArea, ScrollTable, flow_row, responsive_columns, reveal_widget, scroll_event
 
@@ -348,11 +349,24 @@ class QuizApplication(tk.Tk):
         database_kind.bind("<<ComboboxSelected>>", update_kind)
         toggle_address()
 
-        def connect():
+        def connection_values():
+            value = dsn.get().strip() if advanced.get() else build_connection_dsn(host.get(), port.get(), database_name.get(), "SID" if database_kind.current() == 1 else "SERVICE_NAME")
+            if not value or not schema_user.get().strip() or not schema_password.get():
+                raise ValueError("Заполните адрес базы, пользователя схемы и пароль.")
+            return value
+
+        def install():
             try:
-                value = dsn.get().strip() if advanced.get() else build_connection_dsn(host.get(), port.get(), database_name.get(), "SID" if database_kind.current() == 1 else "SERVICE_NAME")
-                if not value or not schema_user.get().strip() or not schema_password.get():
-                    raise ValueError("Заполните адрес базы, пользователя схемы и пароль.")
+                value = connection_values()
+                open_installation(self, value, schema_user.get().strip(), schema_password.get())
+            except Exception as exc:
+                self.report_error(exc)
+
+        def connect():
+            if getattr(self, "installation_busy", False):
+                return
+            try:
+                value = connection_values()
                 self.gateway.connect(value, schema_user.get().strip(), schema_password.get())
                 self.connected_dsn = value
                 save_settings(ConnectionSettings(value, schema_user.get().strip()))
@@ -361,6 +375,8 @@ class QuizApplication(tk.Tk):
                 self.report_error(exc)
 
         ttk.Button(form, text="Подключиться", style="Primary.TButton", command=connect).pack(anchor="w")
+        ttk.Button(form, text="Установить базу приложения (install.sql)", style="Quiet.TButton", command=install).pack(anchor="w", pady=(12, 0))
+        ttk.Label(form, text="Только для установки с нуля: удаляет прежние данные проекта. Для обычного входа используйте «Подключиться».", style="Muted.TLabel", wraplength=690).pack(anchor="w", pady=(5, 0))
         self.set_enter_action(connect)
         schema_password.focus_set()
 
@@ -2675,6 +2691,8 @@ class QuizApplication(tk.Tk):
         tree.bind("<<TreeviewSelect>>", update_selection)
 
     def destroy(self):
+        if getattr(self, "installation_busy", False):
+            return
         self.abandon_active_attempt()
         self.gateway.close()
         super().destroy()

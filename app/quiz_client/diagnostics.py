@@ -59,6 +59,7 @@ def collect_runtime_report():
         ("oracledb", check_oracledb),
         ("cryptography", check_cryptography),
         ("tkinter", check_tkinter),
+        ("installation_sql", check_installation_sql),
     ):
         try:
             report["checks"][name] = {"ok": True, **check()}
@@ -70,6 +71,13 @@ def collect_runtime_report():
                 "traceback": traceback.format_exc(),
             }
     return report
+
+
+def check_installation_sql():
+    from .installer import installation_steps, sql_directory
+
+    steps = installation_steps()
+    return {"path": str(sql_directory()), "statements": sum(bool(step.sql) for step in steps)}
 
 
 def run_self_check(report_path):

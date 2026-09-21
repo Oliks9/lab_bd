@@ -48,6 +48,21 @@ class ConnectionAndAccessTest(unittest.TestCase):
         self.gateway.connect.assert_not_called()
         self.assertEqual(len(self.errors), 1)
 
+    def test_install_button_uses_entered_credentials(self):
+        self.app.show_connection()
+        self.fill(self.field("Пароль схемы Oracle"), "password")
+        with patch.object(ui, "open_installation") as install:
+            self.button("Установить базу приложения (install.sql)").invoke()
+            install.assert_called_once_with(self.app, build_connection_dsn("localhost", "1521", "FREEPDB1", "SERVICE_NAME"), "quiz_app", "password")
+        self.gateway.connect.assert_not_called()
+
+    def test_install_without_password_is_not_started(self):
+        self.app.show_connection()
+        with patch.object(ui, "open_installation") as install:
+            self.button("Установить базу приложения (install.sql)").invoke()
+            install.assert_not_called()
+        self.assertEqual(len(self.errors), 1)
+
     def test_advanced_connection_is_preserved(self):
         dsn = "my_tns_alias"
         with patch.object(ui, "load_settings", return_value=ConnectionSettings(dsn, "schema")), patch.object(ui, "save_settings"):

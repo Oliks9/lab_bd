@@ -61,6 +61,7 @@ try {
         --workpath $WorkPath `
         --specpath $SpecPath `
         --paths (Join-Path $ProjectRoot "app") `
+        --add-data "$(Join-Path $ProjectRoot 'sql');sql" `
         --hidden-import oracledb `
         --collect-all oracledb `
         --collect-all cryptography `

@@ -12,7 +12,7 @@ from quiz_client import database, diagnostics
 
 class RuntimeDiagnosticsTest(unittest.TestCase):
     def setUp(self):
-        for name in ("oracledb", "cryptography", "tkinter"):
+        for name in ("oracledb", "cryptography", "tkinter", "installation_sql"):
             patcher = patch.object(diagnostics, f"check_{name}", return_value={"version": "test"})
             setattr(self, name, patcher.start())
             self.addCleanup(patcher.stop)
@@ -29,7 +29,7 @@ class RuntimeDiagnosticsTest(unittest.TestCase):
         self.assertTrue(report["ok"])
         self.assertTrue(report["frozen"])
         self.assertIn(report["architecture_bits"], (32, 64))
-        self.assertEqual(set(report["checks"]), {"oracledb", "cryptography", "tkinter"})
+        self.assertEqual(set(report["checks"]), {"oracledb", "cryptography", "tkinter", "installation_sql"})
         self.assertTrue(all(check["ok"] for check in report["checks"].values()))
 
     def test_failed_import_keeps_details_and_runs_remaining_checks(self):
