@@ -1,7 +1,8 @@
 param(
     [string]$Python = "python",
     [string]$SqlDirectory = "",
-    [string]$DistDirectory = ""
+    [string]$DistDirectory = "",
+    [switch]$TemporaryBuild
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,6 +16,15 @@ if (-not (Test-Path -LiteralPath (Join-Path $SqlPath "install.sql"))) {
 $WorkPath = Join-Path $ProjectRoot "build\pyinstaller"
 $SpecPath = Join-Path $ProjectRoot "build"
 $TclRuntime = Join-Path $ProjectRoot "build\tcl_runtime"
+$RunId = [guid]::NewGuid().ToString("N")
+$BuildDistPath = $DistPath
+if ($TemporaryBuild) {
+    $TemporaryRoot = Join-Path ([IO.Path]::GetTempPath()) "OracleQuizPlatform-build-$RunId"
+    $WorkPath = Join-Path $TemporaryRoot "work"
+    $SpecPath = $TemporaryRoot
+    $BuildDistPath = Join-Path $TemporaryRoot "dist"
+    Write-Host "Temporary build files: $TemporaryRoot"
+}
 
 $ResolvedPython = & $Python -c "import sys; print(sys.executable)"
 if ($LASTEXITCODE -ne 0 -or -not $ResolvedPython) {
@@ -30,13 +40,14 @@ if ($LASTEXITCODE -ne 0) {
 $SavedPythonPath = $env:PYTHONPATH
 $SavedTclLibrary = $env:TCL_LIBRARY
 $SavedTkLibrary = $env:TK_LIBRARY
-$RunId = [guid]::NewGuid().ToString("N")
+$SavedNoBytecode = $env:PYTHONDONTWRITEBYTECODE
 $SourceReport = Join-Path $WorkPath "source-check-$RunId.json"
 $ExeReport = Join-Path $WorkPath "exe-check-$RunId.json"
-$ExePath = Join-Path $DistPath "OracleQuizPlatform.exe"
+$ExePath = Join-Path $BuildDistPath "OracleQuizPlatform.exe"
 
 Push-Location $ProjectRoot
 try {
+    $env:PYTHONDONTWRITEBYTECODE = "1"
     & $Python -m pip install -r (Join-Path $ProjectRoot "requirements.txt")
     if ($LASTEXITCODE -ne 0) {
         throw "Dependency installation failed (exit code $LASTEXITCODE). No new EXE was built."
@@ -63,7 +74,7 @@ try {
         --onefile `
         --windowed `
         --name "OracleQuizPlatform" `
-        --distpath $DistPath `
+        --distpath $BuildDistPath `
         --workpath $WorkPath `
         --specpath $SpecPath `
         --paths (Join-Path $ProjectRoot "app") `
@@ -98,6 +109,12 @@ try {
         $Check.Dispose()
     }
 
+    if ($TemporaryBuild) {
+        New-Item -ItemType Directory -Path $DistPath -Force | Out-Null
+        $DestinationExe = Join-Path $DistPath "OracleQuizPlatform.exe"
+        Copy-Item -LiteralPath $ExePath -Destination $DestinationExe -Force
+        $ExePath = $DestinationExe
+    }
     Write-Host "EXE verified: $ExePath"
     Write-Host "Dependency report: $ExeReport"
 }
@@ -105,5 +122,6 @@ finally {
     $env:PYTHONPATH = $SavedPythonPath
     $env:TCL_LIBRARY = $SavedTclLibrary
     $env:TK_LIBRARY = $SavedTkLibrary
+    $env:PYTHONDONTWRITEBYTECODE = $SavedNoBytecode
     Pop-Location
 }

@@ -58,8 +58,11 @@ foreach ($Script in $Scripts.Values) {
     New-Item -ItemType Directory -Path (Split-Path -Parent $Destination) -Force | Out-Null
     [IO.File]::WriteAllText($Destination, $Script.Text, $Utf8)
 }
-$Requirements = Get-Content -LiteralPath (Join-Path $ProjectRoot 'requirements.txt') | Where-Object { $_ -notmatch '^pyinstaller' }
+$Requirements = Get-Content -LiteralPath (Join-Path $ProjectRoot 'requirements.txt')
 [IO.File]::WriteAllText((Join-Path $ReleaseRoot 'requirements.txt'), ($Requirements -join "`r`n") + "`r`n", $Utf8)
+New-Item -ItemType Directory -Path (Join-Path $ReleaseRoot 'build') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'build_exe.ps1') -Destination (Join-Path $ReleaseRoot 'build/build_exe.ps1')
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'rebuild_release.ps1') -Destination (Join-Path $ReleaseRoot 'rebuild.ps1')
 $Commit = (& git -C $ProjectRoot rev-parse --short HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Cannot determine source revision.' }
 $Readme = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'release_README.md'), $Utf8)
