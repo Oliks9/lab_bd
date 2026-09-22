@@ -1,11 +1,17 @@
 param(
-    [string]$Python = "python"
+    [string]$Python = "python",
+    [string]$SqlDirectory = "",
+    [string]$DistDirectory = ""
 )
 
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $EntryPoint = Join-Path $ProjectRoot "app\quiz_app.py"
-$DistPath = Join-Path $ProjectRoot "dist"
+$DistPath = if ($DistDirectory) { [IO.Path]::GetFullPath($DistDirectory) } else { Join-Path $ProjectRoot "dist" }
+$SqlPath = if ($SqlDirectory) { (Resolve-Path -LiteralPath $SqlDirectory).Path } else { Join-Path $ProjectRoot "sql" }
+if (-not (Test-Path -LiteralPath (Join-Path $SqlPath "install.sql"))) {
+    throw "SQL directory must contain install.sql."
+}
 $WorkPath = Join-Path $ProjectRoot "build\pyinstaller"
 $SpecPath = Join-Path $ProjectRoot "build"
 $TclRuntime = Join-Path $ProjectRoot "build\tcl_runtime"
@@ -61,7 +67,7 @@ try {
         --workpath $WorkPath `
         --specpath $SpecPath `
         --paths (Join-Path $ProjectRoot "app") `
-        --add-data "$(Join-Path $ProjectRoot 'sql');sql" `
+        --add-data "${SqlPath};sql" `
         --hidden-import oracledb `
         --collect-all oracledb `
         --collect-all cryptography `

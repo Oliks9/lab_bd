@@ -7,3 +7,4 @@ build/pyinstaller/
 build/OracleQuizPlatform.spec
 build/tcl_runtime/
 dist/
+OracleQuizPlatform_Release*/
