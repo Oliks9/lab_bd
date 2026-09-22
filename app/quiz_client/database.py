@@ -371,9 +371,16 @@ class OracleGateway:
         self._commit_procedure("pkg_admin.set_quiz_attempt_limit", [actor_id, quiz_id, attempt_limit])
 
     def grant_access(self, actor_id: int, quiz_id: int, user_id: int) -> None:
-        with self.connection.cursor() as cursor:
-            cursor.callproc("pkg_admin.grant_access", [actor_id, quiz_id, user_id])
-        self.connection.commit()
+        self._commit_procedure("pkg_admin.grant_access", [actor_id, quiz_id, user_id])
+
+    def revoke_access(self, actor_id: int, quiz_id: int, user_id: int) -> None:
+        self._commit_procedure("pkg_admin.revoke_access", [actor_id, quiz_id, user_id])
+
+    def quiz_access(self, actor_id: int, quiz_id: int):
+        with self.connection.cursor() as cursor, self.connection.cursor() as result:
+            cursor.callproc("pkg_admin.list_quiz_access", [actor_id, quiz_id, result])
+            columns = [column[0].lower() for column in result.description]
+            return [dict(zip(columns, row)) for row in result.fetchall()]
 
     def delete_category(self, admin_id: int, category_id: int) -> None:
         with self.connection.cursor() as cursor:

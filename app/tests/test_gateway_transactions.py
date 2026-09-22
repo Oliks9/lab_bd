@@ -44,6 +44,8 @@ class GatewayTransactionTest(unittest.TestCase):
             lambda: self.gateway.archive_quiz(7, 9),
             lambda: self.gateway.set_quiz_feedback(7, 9, 1),
             lambda: self.gateway.set_quiz_attempt_limit(7, 9, 1),
+            lambda: self.gateway.grant_access(7, 9, 3),
+            lambda: self.gateway.revoke_access(7, 9, 3),
         ]
         for operation in operations:
             with self.subTest(operation=operation):
@@ -62,6 +64,12 @@ class GatewayTransactionTest(unittest.TestCase):
                                          [("First", 1), ("Second", 1)])
         self.connection.rollback.assert_called_once()
         self.connection.commit.assert_not_called()
+
+    def test_revoke_access_commits_once(self):
+        self.gateway.revoke_access(7, 9, 3)
+        self.cursor.callproc.assert_called_once_with("pkg_admin.revoke_access", [7, 9, 3])
+        self.connection.commit.assert_called_once()
+        self.connection.rollback.assert_not_called()
 
     def test_invalid_question_edit_rolls_back_replacement(self):
         self.cursor.callproc.side_effect = [None, None, RuntimeError("Only one correct option")]

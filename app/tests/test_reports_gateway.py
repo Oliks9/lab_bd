@@ -30,6 +30,22 @@ class ReportsGatewayTest(unittest.TestCase):
         self.assertEqual(self.gateway.catalog(7), [])
         self.command.callproc.assert_called_once_with("pkg_reports.catalog", [7, None, self.result])
 
+    def test_access_list_uses_protected_admin_cursor(self):
+        self.result.description = [("USER_ID",), ("CAN_REVOKE",)]
+        self.result.fetchall.return_value = [(3, 1)]
+        self.assertEqual(self.gateway.quiz_access(7, 9), [{"user_id": 3, "can_revoke": 1}])
+        self.command.callproc.assert_called_once_with("pkg_admin.list_quiz_access", [7, 9, self.result])
+        self.connection.commit.assert_not_called()
+        self.command_context.__exit__.assert_called_once()
+        self.result_context.__exit__.assert_called_once()
+
+    def test_access_list_failure_closes_cursors(self):
+        self.command.callproc.side_effect = RuntimeError("Forbidden")
+        with self.assertRaisesRegex(RuntimeError, "Forbidden"):
+            self.gateway.quiz_access(7, 9)
+        self.command_context.__exit__.assert_called_once()
+        self.result_context.__exit__.assert_called_once()
+
     def test_database_error_closes_both_cursors(self):
         self.command.callproc.side_effect = RuntimeError("Oracle report failed")
         with self.assertRaisesRegex(RuntimeError, "Oracle report failed"):

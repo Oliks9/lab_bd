@@ -2161,6 +2161,7 @@ class QuizApplication(tk.Tk):
 
         def refresh_feedback_controls(_event=None):
             row = selected_quiz()
+            refresh_access()
             if row is None:
                 feedback_var.set(True)
                 attempt_limit_value.set("0")
@@ -2264,34 +2265,98 @@ class QuizApplication(tk.Tk):
                 self.report_error(exc)
 
         ttk.Button(state_actions, text="Опубликовать выбранный тест", style="Primary.TButton", command=publish).pack(side="left")
-        restricted = [row for row in quizzes if row["access_mode"] == "RESTRICTED"]
-        users = self.gateway.users()
+        ttk.Label(settings, text="Доступ к выбранному тесту", style="CardTitle.TLabel").pack(anchor="w", pady=(16, 4))
+        access_hint = ttk.Label(settings, text="", style="Muted.TLabel", wraplength=760)
+        access_hint.pack(anchor="w")
         access_row = ttk.Frame(settings, style="Panel.TFrame")
         access_row.pack(fill="x", pady=(10, 0))
-        access_quiz = ttk.Combobox(access_row, values=[f"{row['quiz_id']} | {row['title']}" for row in restricted], state="readonly", width=29)
-        access_user = ttk.Combobox(access_row, values=[f"{row['user_id']} | {row['login']}" for row in users], state="readonly", width=24)
-        access_quiz.pack(side="left", padx=(0, 7))
+        access_user = ttk.Combobox(access_row, state="disabled", width=32)
         access_user.pack(side="left", padx=(0, 7))
-        if restricted:
-            access_quiz.set(f"{restricted[0]['quiz_id']} | {restricted[0]['title']}")
-        if users:
-            access_user.set(f"{users[0]['user_id']} | {users[0]['login']}")
+        access_table = ScrollTable(settings, columns=("login", "name", "role", "source", "active", "date"), show="headings", height=5, selectmode="browse")
+        for name, title, width in (("login", "Логин", 135), ("name", "Имя", 200), ("role", "Роль", 130), ("source", "Основание доступа", 165), ("active", "Аккаунт", 115), ("date", "Приглашён", 150)):
+            access_table.heading(name, text=title)
+            access_table.column(name, width=width)
+        access_table.pack(fill="x", pady=(10, 0))
+        access_rows = {}
+
+        def update_revoke(_event=None):
+            selected = access_table.selection()
+            item = access_rows.get(selected[0]) if selected else None
+            revoke_button.configure(state="normal" if item and item["can_revoke"] else "disabled")
+
+        def refresh_access():
+            access_rows.clear()
+            for item in access_table.get_children():
+                access_table.delete(item)
+            access_user.set("")
+            access_user.configure(values=(), state="disabled")
+            grant_button.configure(state="disabled")
+            revoke_button.configure(state="disabled")
+            row = selected_quiz()
+            if row is None:
+                access_hint.configure(text="Выберите тест в верхней таблице.")
+                return
+            if row["access_mode"] != "RESTRICTED":
+                access_hint.configure(text="Публичный тест доступен всем активным участникам. Для приглашений сохраните режим «По приглашению».")
+                return
+            try:
+                entries = self.gateway.quiz_access(self.user.user_id, row["quiz_id"])
+                for item in entries:
+                    key = str(item["user_id"])
+                    access_rows[key] = item
+                    source = {"OWNER": "Автор теста", "ADMIN": "Администратор", "INVITATION": "Приглашение"}.get(item["access_source"], item["access_source"])
+                    date = item.get("granted_at")
+                    date = date.strftime("%d.%m.%Y %H:%M") if hasattr(date, "strftime") else str(date or "-")
+                    access_table.insert("", "end", iid=key, values=(item["login"], item["full_name"], ROLE_NAMES.get(item["role_code"], item["role_code"]), source, "Активен" if item["is_active"] else "Отключён", date))
+                candidates = [f"{item['user_id']} | {item['login']}" for item in self.gateway.users() if item["is_active"] and str(item["user_id"]) not in access_rows and item["role_code"] != "ADMIN"]
+                access_user.configure(values=candidates, state="readonly" if candidates else "disabled")
+                if candidates:
+                    access_user.current(0)
+                    grant_button.configure(state="normal")
+                invited = sum(item["access_source"] == "INVITATION" for item in entries)
+                access_hint.configure(text=f"{row['title']}. Приглашений: {invited}. Автор и администраторы имеют доступ по роли.\nОтзыв запрещает новые попытки. Начатые попытки и результаты сохраняются; отключённые аккаунты не могут входить.")
+            except Exception as exc:
+                access_hint.configure(text="Не удалось загрузить доступ. Нажмите «Обновить доступ».")
+                self.report_error(exc)
 
         def grant_access():
-            if not access_quiz.get() or not access_user.get():
+            row = selected_quiz()
+            if not row or row["access_mode"] != "RESTRICTED" or not access_user.get():
                 messagebox.showwarning("Доступ", "Выберите закрытый тест и пользователя.")
                 return
             try:
                 self.gateway.grant_access(
                     self.user.user_id,
-                    int(access_quiz.get().split("|", 1)[0]),
+                    row["quiz_id"],
                     int(access_user.get().split("|", 1)[0]),
                 )
                 messagebox.showinfo("Доступ", "Доступ к закрытому тесту выдан.")
+                refresh_access()
             except Exception as exc:
                 self.report_error(exc)
 
-        ttk.Button(access_row, text="Выдать доступ", style="Quiet.TButton", command=grant_access).pack(side="left", padx=(7, 0))
+        def revoke_access():
+            row = selected_quiz()
+            selected = access_table.selection()
+            item = access_rows.get(selected[0]) if selected else None
+            if not row or not item or not item["can_revoke"]:
+                return
+            quiz_id, user_id = row["quiz_id"], item["user_id"]
+            if not messagebox.askyesno("Отозвать доступ", f"Отозвать приглашение пользователя {item['login']} к тесту «{row['title']}»?\nНовые попытки будут недоступны. Начатые попытки и результаты сохранятся.", default="no"):
+                return
+            try:
+                self.gateway.revoke_access(self.user.user_id, quiz_id, user_id)
+                refresh_access()
+                messagebox.showinfo("Доступ", "Приглашение отозвано.")
+            except Exception as exc:
+                self.report_error(exc)
+
+        grant_button = ttk.Button(access_row, text="Выдать доступ", style="Quiet.TButton", command=grant_access)
+        grant_button.pack(side="left", padx=(7, 0))
+        revoke_button = ttk.Button(access_row, text="Отозвать доступ", style="Danger.TButton", command=revoke_access, state="disabled")
+        revoke_button.pack(side="left", padx=(7, 0))
+        ttk.Button(access_row, text="Обновить доступ", style="Quiet.TButton", command=refresh_access).pack(side="left", padx=(7, 0))
+        access_table.bind("<<TreeviewSelect>>", update_revoke)
 
         def delete_quiz():
             if not tree.selection():

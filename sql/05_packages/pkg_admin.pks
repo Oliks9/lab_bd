@@ -101,6 +101,18 @@ CREATE OR REPLACE PACKAGE pkg_admin AS
         p_user_id IN NUMBER
     );
 
+    PROCEDURE list_quiz_access (
+        p_actor_id IN NUMBER,
+        p_quiz_id IN NUMBER,
+        p_rows OUT SYS_REFCURSOR
+    );
+
+    PROCEDURE revoke_access (
+        p_actor_id IN NUMBER,
+        p_quiz_id IN NUMBER,
+        p_user_id IN NUMBER
+    );
+
     PROCEDURE delete_category (
         p_admin_id IN NUMBER,
         p_category_id IN NUMBER

@@ -416,19 +416,80 @@ CREATE OR REPLACE PACKAGE BODY pkg_admin AS
             selection_difficulty_code = p_difficulty_code WHERE quiz_id = p_quiz_id;
     END;
 
+    PROCEDURE require_access_manager(p_actor_id NUMBER, p_quiz_id NUMBER, p_lock BOOLEAN DEFAULT FALSE) IS
+        v_role VARCHAR2(20);
+        v_author NUMBER;
+        v_mode VARCHAR2(15);
+    BEGIN
+        v_role := actor_role(p_actor_id);
+        IF p_lock THEN
+            SELECT author_id, access_mode INTO v_author, v_mode FROM quizzes WHERE quiz_id = p_quiz_id FOR UPDATE;
+        ELSE
+            SELECT author_id, access_mode INTO v_author, v_mode FROM quizzes WHERE quiz_id = p_quiz_id;
+        END IF;
+        IF v_role <> 'ADMIN' AND (v_role <> 'AUTHOR' OR v_author <> p_actor_id) THEN
+            RAISE_APPLICATION_ERROR(-20110, 'Управлять доступом может только автор теста или администратор.');
+        END IF;
+        IF v_mode <> 'RESTRICTED' THEN
+            RAISE_APPLICATION_ERROR(-20145, 'Приглашения доступны только для закрытого теста.');
+        END IF;
+    EXCEPTION WHEN NO_DATA_FOUND THEN
+        RAISE_APPLICATION_ERROR(-20148, 'Тест не найден.');
+    END;
+
+    PROCEDURE require_invitation_target(p_quiz_id NUMBER, p_user_id NUMBER) IS
+        v_role VARCHAR2(20);
+        v_author NUMBER;
+    BEGIN
+        SELECT u.role_code, q.author_id INTO v_role, v_author
+          FROM app_users u CROSS JOIN quizzes q WHERE u.user_id = p_user_id AND q.quiz_id = p_quiz_id;
+        IF v_role = 'ADMIN' OR v_author = p_user_id THEN
+            RAISE_APPLICATION_ERROR(-20146, 'Автор и администратор имеют доступ по роли. Приглашение не изменяет этот доступ.');
+        END IF;
+    EXCEPTION WHEN NO_DATA_FOUND THEN
+        RAISE_APPLICATION_ERROR(-20147, 'Пользователь не найден.');
+    END;
+
+    PROCEDURE list_quiz_access (
+        p_actor_id IN NUMBER,
+        p_quiz_id IN NUMBER,
+        p_rows OUT SYS_REFCURSOR
+    ) IS
+    BEGIN
+        require_access_manager(p_actor_id, p_quiz_id);
+        OPEN p_rows FOR
+            SELECT u.user_id, u.login, u.full_name, u.role_code, u.is_active,
+                   CASE WHEN u.user_id = q.author_id THEN 'OWNER'
+                        WHEN u.role_code = 'ADMIN' THEN 'ADMIN' ELSE 'INVITATION' END AS access_source,
+                   qa.granted_at,
+                   CASE WHEN u.user_id = q.author_id OR u.role_code = 'ADMIN' THEN 0 ELSE 1 END AS can_revoke
+              FROM quizzes q CROSS JOIN app_users u
+              LEFT JOIN quiz_access qa ON qa.quiz_id = q.quiz_id AND qa.user_id = u.user_id
+             WHERE q.quiz_id = p_quiz_id
+               AND (qa.user_id IS NOT NULL OR u.user_id = q.author_id OR u.role_code = 'ADMIN')
+             ORDER BY CASE WHEN u.user_id = q.author_id THEN 0 WHEN u.role_code = 'ADMIN' THEN 1 ELSE 2 END,
+                      LOWER(u.login), u.user_id;
+    END;
+
+    PROCEDURE revoke_access (
+        p_actor_id IN NUMBER,
+        p_quiz_id IN NUMBER,
+        p_user_id IN NUMBER
+    ) IS
+    BEGIN
+        require_access_manager(p_actor_id, p_quiz_id, TRUE);
+        require_invitation_target(p_quiz_id, p_user_id);
+        DELETE FROM quiz_access WHERE quiz_id = p_quiz_id AND user_id = p_user_id;
+    END;
+
     PROCEDURE grant_access (
         p_actor_id IN NUMBER,
         p_quiz_id IN NUMBER,
         p_user_id IN NUMBER
     ) IS
-        v_role VARCHAR2(20);
-        v_author_id NUMBER;
     BEGIN
-        v_role := actor_role(p_actor_id);
-        SELECT author_id INTO v_author_id FROM quizzes WHERE quiz_id = p_quiz_id;
-        IF v_role <> 'ADMIN' AND v_author_id <> p_actor_id THEN
-            RAISE_APPLICATION_ERROR(-20110, 'Выдавать доступ может только автор теста или администратор.');
-        END IF;
+        require_access_manager(p_actor_id, p_quiz_id, TRUE);
+        require_invitation_target(p_quiz_id, p_user_id);
         MERGE INTO quiz_access qa
         USING (SELECT p_quiz_id quiz_id, p_user_id user_id FROM dual) src
            ON (qa.quiz_id = src.quiz_id AND qa.user_id = src.user_id)

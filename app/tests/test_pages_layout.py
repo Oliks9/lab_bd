@@ -45,6 +45,7 @@ class PagesLayoutTest(unittest.TestCase):
         self.gateway.admin_question_options.return_value = [dict(option_text="Ответ", seq_no=1, is_correct=1)]
         self.gateway.selection_pool_count.return_value = 6
         self.gateway.users.return_value = [dict(user_id=1, login="student", full_name="Участник", role_code="USER", is_active=1)]
+        self.gateway.quiz_access.return_value = []
         self.gateway.quiz_statistics.return_value = [dict(quiz_id=1, topic_title="Oracle", quiz_title="Учебный тест", attempts_count=12, average_score=50)]
         self.gateway.question_statistics.return_value = [dict(question_text="Вопрос", answer_count=12, correct_percent=50)]
         self.gateway.user_progress_summary.return_value = [dict(user_id=1, login="student", full_name="Участник", attempt_count=12)]

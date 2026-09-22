@@ -116,3 +116,74 @@ class ConnectionAndAccessTest(unittest.TestCase):
         self.gateway.publish_quiz.assert_not_called()
         self.app.show_admin.assert_not_called()
         self.assertEqual(len(self.errors), 1)
+
+    def access_fixture(self):
+        owner = dict(user_id=7, login="author", full_name="Автор", role_code="AUTHOR", is_active=1, access_source="OWNER", granted_at=None, can_revoke=0)
+        invited = dict(user_id=1, login="student", full_name="Участник", role_code="USER", is_active=1, access_source="INVITATION", granted_at=None, can_revoke=1)
+        self.gateway.quiz_access.return_value = [owner, invited]
+        self.publication()
+        return next(w for w in self.widgets(self.app) if isinstance(w, ttk.Treeview) and "source" in w.cget("columns"))
+
+    def test_invitation_list_and_revoke_refresh_without_relogin(self):
+        tree = self.access_fixture()
+        self.assertEqual(set(tree.get_children()), {"7", "1"})
+        tree.selection_set("1")
+        self.pump()
+        self.assertFalse(self.button("Отозвать доступ").instate(["disabled"]))
+        self.gateway.quiz_access.return_value = self.gateway.quiz_access.return_value[:1]
+        with patch.object(ui.messagebox, "askyesno", return_value=True), patch.object(ui.messagebox, "showinfo"):
+            self.button("Отозвать доступ").invoke()
+        self.pump()
+        self.gateway.revoke_access.assert_called_once_with(7, 1, 1)
+        self.assertEqual(tree.get_children(), ("7",))
+        self.app.show_admin.assert_not_called()
+
+    def test_owner_cannot_be_revoked_and_cancel_does_nothing(self):
+        tree = self.access_fixture()
+        tree.selection_set("7")
+        self.pump()
+        self.assertTrue(self.button("Отозвать доступ").instate(["disabled"]))
+        tree.selection_set("1")
+        self.pump()
+        with patch.object(ui.messagebox, "askyesno", return_value=False):
+            self.button("Отозвать доступ").invoke()
+        self.gateway.revoke_access.assert_not_called()
+        self.assertIn("1", tree.get_children())
+
+    def test_public_quiz_hides_private_access_controls(self):
+        self.quiz["access_mode"] = "PUBLIC"
+        self.publication()
+        self.gateway.quiz_access.assert_not_called()
+        self.assertTrue(self.button("Отозвать доступ").instate(["disabled"]))
+        self.assertTrue(self.button("Выдать доступ").instate(["disabled"]))
+
+    def test_grant_refreshes_selected_quiz_access(self):
+        self.publication()
+        invited = dict(user_id=1, login="student", full_name="Участник", role_code="USER", is_active=1, access_source="INVITATION", granted_at=None, can_revoke=1)
+        self.gateway.quiz_access.return_value = [invited]
+        with patch.object(ui.messagebox, "showinfo"):
+            self.button("Выдать доступ").invoke()
+        self.gateway.grant_access.assert_called_once_with(7, 1, 1)
+        tree = next(w for w in self.widgets(self.app) if isinstance(w, ttk.Treeview) and "source" in w.cget("columns"))
+        self.assertEqual(tree.get_children(), ("1",))
+        self.assertTrue(self.button("Выдать доступ").instate(["disabled"]))
+
+    def test_switching_quiz_clears_stale_revoke_selection(self):
+        tree = self.access_fixture()
+        tree.selection_set("1")
+        self.pump()
+        quizzes = next(w for w in self.widgets(self.app) if isinstance(w, ttk.Treeview) and "status" in w.cget("columns"))
+        quizzes.selection_remove("1")
+        self.pump()
+        self.assertFalse(tree.get_children())
+        self.assertTrue(self.button("Отозвать доступ").instate(["disabled"]))
+
+    def test_revoke_failure_preserves_visible_invitation(self):
+        tree = self.access_fixture()
+        tree.selection_set("1")
+        self.pump()
+        self.gateway.revoke_access.side_effect = RuntimeError("Forbidden")
+        with patch.object(ui.messagebox, "askyesno", return_value=True):
+            self.button("Отозвать доступ").invoke()
+        self.assertIn("1", tree.get_children())
+        self.assertEqual(len(self.errors), 1)
