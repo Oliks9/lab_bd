@@ -63,6 +63,8 @@ $Requirements = Get-Content -LiteralPath (Join-Path $ProjectRoot 'requirements.t
 New-Item -ItemType Directory -Path (Join-Path $ReleaseRoot 'build') -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'build_exe.ps1') -Destination (Join-Path $ReleaseRoot 'build/build_exe.ps1')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'rebuild_release.ps1') -Destination (Join-Path $ReleaseRoot 'rebuild.ps1')
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'publish_gitlab.ps1') -Destination (Join-Path $ReleaseRoot 'publish_gitlab.ps1')
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'upload_gitlab.cmd') -Destination (Join-Path $ReleaseRoot 'upload_gitlab.cmd')
 $Commit = (& git -C $ProjectRoot rev-parse --short HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Cannot determine source revision.' }
 $Readme = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'release_README.md'), $Utf8)
